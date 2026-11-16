@@ -1,0 +1,6 @@
+.git
+*.eu5
+*.eu5.json
+__pycache__
+.pytest_cache
+data

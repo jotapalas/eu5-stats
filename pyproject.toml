@@ -1,0 +1,10 @@
+[project]
+name = "eu5-stats"
+version = "0.1.0"
+description = "EU5 save decoder API"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

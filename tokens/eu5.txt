@@ -1,0 +1,3 @@
+# EU5 native token names: one "<id> <name>" per line (id in hex 0x.... or decimal).
+# Unlisted ids are rendered as "0xNNNN" in the decoded JSON.
+# Use `make token-stats` to see which ids appear and in what context.
