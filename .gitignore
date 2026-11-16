@@ -1,6 +1,5 @@
 # Saves and decoded output (large files)
-*.eu5
-*.eu5.json
+
 __pycache__/
 .pytest_cache/
 # Stats database and stored uploads
