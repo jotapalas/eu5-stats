@@ -1,6 +1,16 @@
-"""SQLite storage for campaigns, sessions, saves and extracted statistics."""
+"""SQLite storage for campaigns, sessions, saves and extracted statistics.
+
+Statistics are per country, keyed by `country_id` (stable across tag changes such as ENG -> GBR);
+each snapshot keeps the tag the country had in that save and the players controlling it. Countries
+are labelled in query results by their *current* tag: the one in their latest processed save.
+
+`campaign_countries` is the editable list of countries a campaign tracks. Countries played by humans
+are added automatically when a save is processed; removing one only deactivates it, so data already
+extracted is kept and the country is no longer extracted from saves processed afterwards.
+"""
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -43,33 +53,37 @@ CREATE TABLE IF NOT EXISTS saves (
     UNIQUE (campaign_id, sha256)
 );
 CREATE INDEX IF NOT EXISTS saves_status ON saves(status);
-CREATE TABLE IF NOT EXISTS players (
+CREATE TABLE IF NOT EXISTS campaign_countries (
     id          INTEGER PRIMARY KEY,
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    name        TEXT NOT NULL,
-    UNIQUE (campaign_id, name)
+    tag         TEXT NOT NULL,      -- tag the country was added with
+    country_id  INTEGER,            -- NULL until a processed save resolves the tag
+    active      INTEGER NOT NULL DEFAULT 1,
+    added_at    TEXT NOT NULL,
+    UNIQUE (campaign_id, country_id)
 );
-CREATE TABLE IF NOT EXISTS player_snapshots (
+CREATE TABLE IF NOT EXISTS country_snapshots (
     save_id    INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
-    player_id  INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     country_id INTEGER NOT NULL,
     tag        TEXT,
-    PRIMARY KEY (save_id, player_id)
+    players    TEXT NOT NULL,  -- JSON list of player names (empty: AI)
+    PRIMARY KEY (save_id, country_id)
 );
-CREATE TABLE IF NOT EXISTS metrics (
-    save_id   INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
-    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-    metric    TEXT NOT NULL,
-    value     REAL NOT NULL,
-    PRIMARY KEY (save_id, player_id, metric)
+CREATE TABLE IF NOT EXISTS country_metrics (
+    save_id    INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    country_id INTEGER NOT NULL,
+    metric     TEXT NOT NULL,
+    value      REAL NOT NULL,
+    PRIMARY KEY (save_id, country_id, metric)
 );
 CREATE TABLE IF NOT EXISTS country_history (
-    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
-    tag     TEXT NOT NULL,
-    metric  TEXT NOT NULL,
-    year    INTEGER NOT NULL,
-    value   REAL NOT NULL,
-    PRIMARY KEY (save_id, tag, metric, year)
+    save_id    INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    country_id INTEGER NOT NULL,
+    tag        TEXT,
+    metric     TEXT NOT NULL,
+    year       INTEGER NOT NULL,
+    value      REAL NOT NULL,
+    PRIMARY KEY (save_id, country_id, metric, year)
 );
 """
 
@@ -147,8 +161,9 @@ class Store:
         if row is None:
             raise NotFound(f"Campaign {campaign_id} not found")
         out = dict(row)
-        out["players"] = [r["name"] for r in db.execute(
-            "SELECT name FROM players WHERE campaign_id = ? ORDER BY name", (campaign_id,))]
+        current = self._current_tags(db, campaign_id)
+        out["countries"] = sorted(
+            current.get(e["country_id"], e["tag"]) for e in self._entries(db, campaign_id) if e["active"])
         return out
 
     def get_campaign(self, campaign_id: int) -> dict:
@@ -178,6 +193,113 @@ class Store:
             if c["sessions"]:
                 raise Conflict("Campaign has sessions; delete them first")
             db.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+
+    # ------------------------------------------------------------------ tracked countries
+    @staticmethod
+    def _entries(db, campaign_id: int) -> list[sqlite3.Row]:
+        return db.execute("SELECT * FROM campaign_countries WHERE campaign_id = ? ORDER BY id",
+                          (campaign_id,)).fetchall()
+
+    @staticmethod
+    def _current_tags(db, campaign_id: int) -> dict[int, str]:
+        """country_id -> tag in its latest processed save of the campaign."""
+        out: dict[int, str] = {}
+        for r in db.execute(
+            """SELECT cs.country_id, cs.tag FROM country_snapshots cs JOIN saves s ON s.id = cs.save_id
+               WHERE s.campaign_id = ? AND s.status = 'done' AND cs.tag IS NOT NULL
+               ORDER BY s.game_hours, s.id""", (campaign_id,)):
+            out[r["country_id"]] = r["tag"]
+        return out
+
+    def _label(self, db, campaign_id: int):
+        """Function country_id -> display tag (current tag, else the tag it was added with)."""
+        current = self._current_tags(db, campaign_id)
+        added = {e["country_id"]: e["tag"] for e in self._entries(db, campaign_id) if e["country_id"] is not None}
+        return lambda cid: current.get(cid) or added.get(cid) or str(cid)
+
+    def _country_id(self, db, campaign_id: int, tag: str) -> int | None:
+        """Resolve a tag to a country_id: current tag, then tag it was added with, then any past tag."""
+        for cid, t in self._current_tags(db, campaign_id).items():
+            if t == tag:
+                return cid
+        for e in self._entries(db, campaign_id):
+            if e["tag"] == tag and e["country_id"] is not None:
+                return e["country_id"]
+        row = db.execute(
+            """SELECT cs.country_id FROM country_snapshots cs JOIN saves s ON s.id = cs.save_id
+               WHERE s.campaign_id = ? AND s.status = 'done' AND cs.tag = ?
+               ORDER BY s.game_hours DESC, s.id DESC LIMIT 1""", (campaign_id, tag)).fetchone()
+        return row[0] if row else None
+
+    def _entry_for(self, db, campaign_id: int, tag: str) -> sqlite3.Row | None:
+        cid = self._country_id(db, campaign_id, tag)
+        for e in self._entries(db, campaign_id):
+            if (cid is not None and e["country_id"] == cid) or (e["country_id"] is None and e["tag"] == tag):
+                return e
+        return None
+
+    def tracked_countries(self, campaign_id: int) -> list[tuple[str, int | None]]:
+        """Active tracked countries as (tag, country_id or None), the input of `extract`."""
+        with self.connect() as db:
+            return [(e["tag"], e["country_id"]) for e in self._entries(db, campaign_id) if e["active"]]
+
+    def list_countries(self, campaign_id: int) -> list[dict]:
+        with self.connect() as db:
+            self._campaign(db, campaign_id)
+            current = self._current_tags(db, campaign_id)
+            seen: dict[int, dict] = {}
+            for r in db.execute(
+                f"""SELECT cs.country_id, cs.tag, cs.players, s.game_date FROM ({EFFECTIVE_SAVES}) s
+                    JOIN country_snapshots cs ON cs.save_id = s.id ORDER BY s.game_hours""",
+                {"campaign": campaign_id}):
+                info = seen.setdefault(r["country_id"], {"tags": [], "players": [], "snapshots": 0})
+                if r["tag"] and r["tag"] not in info["tags"]:
+                    info["tags"].append(r["tag"])
+                for p in json.loads(r["players"]):
+                    if p not in info["players"]:
+                        info["players"].append(p)
+                info["snapshots"] += 1
+                info["last_date"] = r["game_date"]
+            out = []
+            for e in self._entries(db, campaign_id):
+                info = seen.get(e["country_id"], {}) if e["country_id"] is not None else {}
+                out.append({
+                    "tag": current.get(e["country_id"], e["tag"]),
+                    "added_as": e["tag"],
+                    "country_id": e["country_id"],
+                    "active": bool(e["active"]),
+                    "added_at": e["added_at"],
+                    "tags": info.get("tags", []),
+                    "players": info.get("players", []),
+                    "snapshots": info.get("snapshots", 0),
+                    "last_date": info.get("last_date"),
+                })
+            return sorted(out, key=lambda c: (not c["active"], c["tag"]))
+
+    def add_country(self, campaign_id: int, tag: str) -> dict:
+        """Track a country from now on. Reactivates it if it was removed."""
+        with self.connect() as db:
+            self._campaign(db, campaign_id)
+            entry = self._entry_for(db, campaign_id, tag)
+            if entry is not None:
+                if entry["active"]:
+                    raise Conflict(f"Country {tag} is already tracked in campaign {campaign_id}")
+                db.execute("UPDATE campaign_countries SET active = 1 WHERE id = ?", (entry["id"],))
+            else:
+                db.execute(
+                    "INSERT INTO campaign_countries(campaign_id, tag, country_id, added_at) VALUES (?,?,?,?)",
+                    (campaign_id, tag, self._country_id(db, campaign_id, tag), now()))
+        return next(c for c in self.list_countries(campaign_id)
+                    if tag in (c["tag"], c["added_as"]) or tag in c["tags"])
+
+    def remove_country(self, campaign_id: int, tag: str) -> None:
+        """Stop tracking a country in saves processed from now on; extracted data is kept."""
+        with self.connect() as db:
+            self._campaign(db, campaign_id)
+            entry = self._entry_for(db, campaign_id, tag)
+            if entry is None or not entry["active"]:
+                raise NotFound(f"Country {tag} is not tracked in campaign {campaign_id}")
+            db.execute("UPDATE campaign_countries SET active = 0 WHERE id = ?", (entry["id"],))
 
     # ------------------------------------------------------------------ sessions
     def create_session(self, campaign_id: int, name: str | None, played_on: str | None,
@@ -234,8 +356,6 @@ class Store:
             shas = [r["sha256"] for r in db.execute(
                 "SELECT sha256 FROM saves WHERE session_id = ?", (session_id,))]
             db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-            # Players that no longer appear in any save of the campaign.
-            db.execute("DELETE FROM players WHERE id NOT IN (SELECT player_id FROM player_snapshots)")
             return [s for s in shas if db.execute(
                 "SELECT 1 FROM saves WHERE sha256 = ? LIMIT 1", (s,)).fetchone() is None]
 
@@ -265,8 +385,10 @@ class Store:
             if row is None:
                 raise NotFound(f"Save {save_id} not found")
             out = dict(row)
-            out["players"] = db.execute(
-                "SELECT COUNT(*) FROM player_snapshots WHERE save_id = ?", (save_id,)).fetchone()[0]
+            players = [json.loads(r[0]) for r in db.execute(
+                "SELECT players FROM country_snapshots WHERE save_id = ?", (save_id,))]
+            out["countries"] = len(players)
+            out["players"] = sum(len(p) for p in players)
             return out
 
     def claim_next_pending(self) -> dict | None:
@@ -301,6 +423,27 @@ class Store:
             db.execute("UPDATE saves SET status = 'error', error = ?, processed_at = ? WHERE id = ?",
                        (error, now(), save_id))
 
+    def _update_tracked(self, db, campaign_id: int, stats: SaveStats) -> set[int]:
+        """Resolve pending entries, auto-add played countries; returns the active country ids."""
+        entries = self._entries(db, campaign_id)
+        by_cid = {e["country_id"]: e for e in entries if e["country_id"] is not None}
+        pending = {e["tag"]: e for e in entries if e["country_id"] is None}
+        active = {cid for cid, e in by_cid.items() if e["active"]}
+        for c in stats.countries:
+            if c.country_id in by_cid:
+                continue
+            e = pending.pop(c.tag, None) if c.tag else None
+            if e is not None:
+                db.execute("UPDATE campaign_countries SET country_id = ? WHERE id = ?", (c.country_id, e["id"]))
+                if e["active"]:
+                    active.add(c.country_id)
+            elif c.players:
+                db.execute(
+                    "INSERT INTO campaign_countries(campaign_id, tag, country_id, added_at) VALUES (?,?,?,?)",
+                    (campaign_id, c.tag or str(c.country_id), c.country_id, now()))
+                active.add(c.country_id)
+        return active
+
     def store_stats(self, save_id: int, stats: SaveStats) -> None:
         """Replace everything extracted from a save (idempotent, used for reprocessing)."""
         with self.connect() as db:
@@ -317,20 +460,19 @@ class Store:
                 warning = (f"Save belongs to playthrough {stats.playthrough_id}, other saves in this "
                            f"campaign belong to {sorted(others)}")
 
-            db.execute("DELETE FROM player_snapshots WHERE save_id = ?", (save_id,))
-            db.execute("DELETE FROM metrics WHERE save_id = ?", (save_id,))
+            active = self._update_tracked(db, campaign_id, stats)
+            db.execute("DELETE FROM country_snapshots WHERE save_id = ?", (save_id,))
+            db.execute("DELETE FROM country_metrics WHERE save_id = ?", (save_id,))
             db.execute("DELETE FROM country_history WHERE save_id = ?", (save_id,))
-            for p in stats.players:
-                db.execute("INSERT OR IGNORE INTO players(campaign_id, name) VALUES (?, ?)",
-                           (campaign_id, p.name))
-                player_id = db.execute("SELECT id FROM players WHERE campaign_id = ? AND name = ?",
-                                       (campaign_id, p.name)).fetchone()[0]
-                db.execute("INSERT INTO player_snapshots VALUES (?, ?, ?, ?)",
-                           (save_id, player_id, p.country_id, p.tag))
-                db.executemany("INSERT INTO metrics VALUES (?, ?, ?, ?)",
-                               [(save_id, player_id, k, v) for k, v in p.metrics.items()])
-            db.executemany("INSERT INTO country_history VALUES (?, ?, ?, ?, ?)",
-                           [(save_id, tag, m, y, v) for tag, m, y, v in stats.history])
+            for c in stats.countries:
+                if c.country_id not in active:  # played but removed from the campaign
+                    continue
+                db.execute("INSERT INTO country_snapshots VALUES (?, ?, ?, ?)",
+                           (save_id, c.country_id, c.tag, json.dumps(c.players)))
+                db.executemany("INSERT INTO country_metrics VALUES (?, ?, ?, ?)",
+                               [(save_id, c.country_id, k, v) for k, v in c.metrics.items()])
+            db.executemany("INSERT INTO country_history VALUES (?, ?, ?, ?, ?, ?)",
+                           [(save_id, cid, tag, m, y, v) for cid, tag, m, y, v in stats.history if cid in active])
             db.execute(
                 """UPDATE saves SET status = 'done', error = NULL, warning = ?, processed_at = ?,
                    playthrough_id = ?, playthrough_name = ?, version = ?,
@@ -340,81 +482,85 @@ class Store:
             )
 
     # ------------------------------------------------------------------ queries
-    def series(self, campaign_id: int, metric: str, player: str | None = None,
+    def _resolve(self, db, campaign_id: int, tag: str) -> int:
+        cid = self._country_id(db, campaign_id, tag)
+        if cid is None:
+            raise NotFound(f"Country {tag} not found in campaign {campaign_id}")
+        return cid
+
+    def series(self, campaign_id: int, metric: str, tag: str | None = None,
                session_id: int | None = None) -> dict[str, list]:
         with self.connect() as db:
             self._campaign(db, campaign_id)
+            cid = self._resolve(db, campaign_id, tag) if tag is not None else None
             if session_id is not None:
                 saves_sql = "SELECT * FROM saves WHERE session_id = :session AND status = 'done'"
             else:
                 saves_sql = EFFECTIVE_SAVES
             rows = db.execute(
                 f"""
-                SELECT p.name, s.game_date, m.value
+                SELECT m.country_id, s.game_date, m.value
                 FROM ({saves_sql}) s
-                JOIN metrics m ON m.save_id = s.id
-                JOIN players p ON p.id = m.player_id
-                WHERE m.metric = :metric AND (:player IS NULL OR p.name = :player)
-                ORDER BY p.name, s.game_hours
+                JOIN country_metrics m ON m.save_id = s.id
+                WHERE m.metric = :metric AND (:cid IS NULL OR m.country_id = :cid)
+                ORDER BY m.country_id, s.game_hours
                 """,
-                {"campaign": campaign_id, "session": session_id, "metric": metric, "player": player},
+                {"campaign": campaign_id, "session": session_id, "metric": metric, "cid": cid},
             ).fetchall()
+            label = self._label(db, campaign_id)
             out: dict[str, list] = {}
             for r in rows:
-                out.setdefault(r["name"], []).append([r["game_date"], r["value"]])
-            return out
+                out.setdefault(label(r["country_id"]), []).append([r["game_date"], r["value"]])
+            return dict(sorted(out.items()))
 
-    def player_timeline(self, campaign_id: int, name: str) -> list[dict]:
+    def country_timeline(self, campaign_id: int, tag: str) -> dict:
         with self.connect() as db:
             self._campaign(db, campaign_id)
-            pid = db.execute("SELECT id FROM players WHERE campaign_id = ? AND name = ?",
-                             (campaign_id, name)).fetchone()
-            if pid is None:
-                raise NotFound(f"Player {name!r} not found in campaign {campaign_id}")
+            cid = self._resolve(db, campaign_id, tag)
             snaps = db.execute(
                 f"""
-                SELECT s.id, s.game_date, s.session_id, ps.tag, ps.country_id
+                SELECT s.id, s.game_date, s.session_id, cs.tag, cs.players
                 FROM ({EFFECTIVE_SAVES}) s
-                JOIN player_snapshots ps ON ps.save_id = s.id AND ps.player_id = :player
+                JOIN country_snapshots cs ON cs.save_id = s.id AND cs.country_id = :cid
                 ORDER BY s.game_hours
                 """,
-                {"campaign": campaign_id, "player": pid[0]},
+                {"campaign": campaign_id, "cid": cid},
             ).fetchall()
-            out = []
+            timeline = []
             for s in snaps:
                 metrics = {r["metric"]: r["value"] for r in db.execute(
-                    "SELECT metric, value FROM metrics WHERE save_id = ? AND player_id = ?",
-                    (s["id"], pid[0]))}
-                out.append({"save_id": s["id"], "session_id": s["session_id"], "date": s["game_date"],
-                            "tag": s["tag"], "country_id": s["country_id"], "metrics": metrics})
-            return out
+                    "SELECT metric, value FROM country_metrics WHERE save_id = ? AND country_id = ?",
+                    (s["id"], cid))}
+                timeline.append({"save_id": s["id"], "session_id": s["session_id"], "date": s["game_date"],
+                                 "tag": s["tag"], "players": json.loads(s["players"]), "metrics": metrics})
+            return {"tag": self._label(db, campaign_id)(cid), "country_id": cid, "timeline": timeline}
 
     def latest_snapshots(self, campaign_id: int) -> dict[str, dict]:
-        """Latest snapshot of each player in the campaign."""
+        """Latest snapshot of each country with data in the campaign."""
         with self.connect() as db:
             self._campaign(db, campaign_id)
             rows = db.execute(
                 f"""
-                SELECT p.name, s.id AS save_id, s.game_date, ps.tag, ps.player_id
+                SELECT s.id AS save_id, s.game_date, cs.country_id, cs.tag, cs.players
                 FROM ({EFFECTIVE_SAVES}) s
-                JOIN player_snapshots ps ON ps.save_id = s.id
-                JOIN players p ON p.id = ps.player_id
+                JOIN country_snapshots cs ON cs.save_id = s.id
                 WHERE s.game_hours = (
                     SELECT MAX(s3.game_hours) FROM saves s3
-                    JOIN player_snapshots ps3 ON ps3.save_id = s3.id
+                    JOIN country_snapshots cs3 ON cs3.save_id = s3.id
                     WHERE s3.campaign_id = :campaign AND s3.status = 'done'
-                      AND ps3.player_id = ps.player_id)
-                ORDER BY p.name
+                      AND cs3.country_id = cs.country_id)
                 """,
                 {"campaign": campaign_id},
             ).fetchall()
+            label = self._label(db, campaign_id)
             out = {}
             for r in rows:
                 metrics = {m["metric"]: m["value"] for m in db.execute(
-                    "SELECT metric, value FROM metrics WHERE save_id = ? AND player_id = ?",
-                    (r["save_id"], r["player_id"]))}
-                out[r["name"]] = {"date": r["game_date"], "tag": r["tag"], "metrics": metrics}
-            return out
+                    "SELECT metric, value FROM country_metrics WHERE save_id = ? AND country_id = ?",
+                    (r["save_id"], r["country_id"]))}
+                out[label(r["country_id"])] = {"date": r["game_date"], "tag": r["tag"], "country_id": r["country_id"],
+                                               "players": json.loads(r["players"]), "metrics": metrics}
+            return dict(sorted(out.items()))
 
     def session_summary(self, session_id: int) -> dict:
         with self.connect() as db:
@@ -423,56 +569,58 @@ class Store:
                 "SELECT id, game_date, game_hours FROM saves WHERE session_id = ? AND status = 'done' "
                 "ORDER BY game_hours, id", (session_id,)).fetchall()
             out = {"session_id": session_id, "campaign_id": session["campaign_id"],
-                   "first_date": None, "last_date": None, "players": {}}
+                   "first_date": None, "last_date": None, "countries": {}}
             if not saves:
                 return out
             first, last = saves[0], saves[-1]
             out["first_date"], out["last_date"] = first["game_date"], last["game_date"]
 
             def load(save_id):
-                res: dict[str, dict] = {}
-                for r in db.execute(
-                    """SELECT p.name, m.metric, m.value FROM metrics m
-                       JOIN players p ON p.id = m.player_id WHERE m.save_id = ?""", (save_id,)):
-                    res.setdefault(r["name"], {})[r["metric"]] = r["value"]
+                res: dict[int, dict] = {}
+                for r in db.execute("SELECT country_id, metric, value FROM country_metrics WHERE save_id = ?",
+                                    (save_id,)):
+                    res.setdefault(r["country_id"], {})[r["metric"]] = r["value"]
                 return res
 
             start, end = load(first["id"]), load(last["id"])
-            for name in sorted(set(start) | set(end)):
-                s, e = start.get(name, {}), end.get(name, {})
-                out["players"][name] = {
+            label = self._label(db, session["campaign_id"])
+            for cid in set(start) | set(end):
+                s, e = start.get(cid, {}), end.get(cid, {})
+                out["countries"][label(cid)] = {
                     m: {"start": s.get(m), "end": e.get(m),
                         "delta": (e[m] - s[m]) if m in s and m in e else None}
                     for m in sorted(set(s) | set(e))
                 }
+            out["countries"] = dict(sorted(out["countries"].items()))
             return out
 
     def history(self, campaign_id: int, metric: str) -> dict:
-        """Yearly series kept by the game (historical_*), per tag; the latest save wins per year."""
+        """Yearly series kept by the game (historical_*), per country; the latest save wins per year."""
         with self.connect() as db:
             self._campaign(db, campaign_id)
             rows = db.execute(
                 f"""
-                SELECT h.tag, h.year, h.value
+                SELECT h.country_id, h.year, h.value
                 FROM country_history h JOIN ({EFFECTIVE_SAVES}) s ON s.id = h.save_id
                 WHERE h.metric = :metric
                   AND s.game_hours = (
                       SELECT MAX(s2.game_hours) FROM country_history h2
                       JOIN saves s2 ON s2.id = h2.save_id
                       WHERE s2.campaign_id = :campaign AND s2.status = 'done'
-                        AND h2.tag = h.tag AND h2.metric = h.metric AND h2.year = h.year)
-                ORDER BY h.tag, h.year
+                        AND h2.country_id = h.country_id AND h2.metric = h.metric AND h2.year = h.year)
+                ORDER BY h.country_id, h.year
                 """,
                 {"campaign": campaign_id, "metric": metric},
             ).fetchall()
+            label = self._label(db, campaign_id)
             series: dict[str, list] = {}
             for r in rows:
-                series.setdefault(r["tag"], []).append([r["year"], r["value"]])
-            players: dict[str, list] = {}
+                series.setdefault(label(r["country_id"]), []).append([r["year"], r["value"]])
+            players: dict[str, set] = {}
             for r in db.execute(
-                """SELECT DISTINCT ps.tag, p.name FROM player_snapshots ps
-                   JOIN players p ON p.id = ps.player_id
-                   JOIN saves s ON s.id = ps.save_id
-                   WHERE s.campaign_id = ? AND ps.tag IS NOT NULL ORDER BY p.name""", (campaign_id,)):
-                players.setdefault(r["tag"], []).append(r["name"])
-            return {"series": series, "players": players}
+                """SELECT cs.country_id, cs.players FROM country_snapshots cs
+                   JOIN saves s ON s.id = cs.save_id
+                   WHERE s.campaign_id = ? AND s.status = 'done'""", (campaign_id,)):
+                players.setdefault(label(r["country_id"]), set()).update(json.loads(r["players"]))
+            return {"series": dict(sorted(series.items())),
+                    "players": {t: sorted(p) for t, p in sorted(players.items())}}

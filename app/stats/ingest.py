@@ -75,9 +75,9 @@ class Ingestor:
         save_id = save["id"]
         try:
             data = self.path_for(save["sha256"]).read_bytes()
-            stats = extract(data, self.tokens)
+            stats = extract(data, self.tokens, self.store.tracked_countries(save["campaign_id"]))
             self.store.store_stats(save_id, stats)
-            log.info("Processed save %s (%s): %d players", save_id, stats.game_date, len(stats.players))
+            log.info("Processed save %s (%s): %d countries", save_id, stats.game_date, len(stats.countries))
         except Exception as e:  # noqa: BLE001 - any failure is recorded on the save
             log.exception("Failed to process save %s", save_id)
             self.store.mark_error(save_id, f"{type(e).__name__}: {e}")

@@ -1,4 +1,4 @@
-"""Catalogue of per-player metrics extracted from a country record.
+"""Catalogue of per-country metrics extracted from a country record.
 
 Each metric is a function of (country, ctx) -> float. Paradox omits fields whose value
 is zero/false, so every lookup defaults to 0.

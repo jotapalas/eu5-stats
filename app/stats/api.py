@@ -32,6 +32,10 @@ class CampaignPatch(BaseModel):
     description: str | None = None
 
 
+class CountryIn(BaseModel):
+    tag: str = Field(min_length=1, max_length=8, pattern=r"^[A-Za-z0-9_]+$")
+
+
 # ---------------------------------------------------------------------- metrics
 @router.get("/metrics", tags=["stats"])
 def list_metrics() -> dict:
@@ -68,6 +72,29 @@ def update_campaign(campaign_id: int, body: CampaignPatch, request: Request) -> 
 @router.delete("/campaigns/{campaign_id}", status_code=204, tags=["campaigns"])
 def delete_campaign(campaign_id: int, request: Request):
     _store(request).delete_campaign(campaign_id)
+
+
+# ---------------------------------------------------------------------- tracked countries
+@router.get("/campaigns/{campaign_id}/countries", tags=["countries"])
+def list_countries(campaign_id: int, request: Request) -> list[dict]:
+    return _store(request).list_countries(campaign_id)
+
+
+@router.post("/campaigns/{campaign_id}/countries", status_code=201, tags=["countries"])
+def add_country(campaign_id: int, body: CountryIn, request: Request) -> dict:
+    """Track a country in saves processed from now on (use /reprocess for existing saves)."""
+    return _store(request).add_country(campaign_id, body.tag.upper())
+
+
+@router.delete("/campaigns/{campaign_id}/countries/{tag}", status_code=204, tags=["countries"])
+def remove_country(campaign_id: int, tag: str, request: Request):
+    """Stop tracking a country in saves processed from now on; extracted data is kept."""
+    _store(request).remove_country(campaign_id, tag.upper())
+
+
+@router.get("/campaigns/{campaign_id}/countries/{tag}", tags=["countries"])
+def country(campaign_id: int, tag: str, request: Request) -> dict:
+    return _store(request).country_timeline(campaign_id, tag.upper())
 
 
 @router.post("/campaigns/{campaign_id}/reprocess", status_code=202, tags=["campaigns"])
@@ -141,18 +168,13 @@ def series(
     campaign_id: int,
     request: Request,
     metric: str = Query(..., description="See /metrics"),
-    player: str | None = None,
+    tag: str | None = Query(None, description="Current or past tag of the country"),
     session: int | None = None,
 ) -> dict:
     if metric not in METRICS_BY_NAME:
         raise HTTPException(422, f"Unknown metric {metric!r}; see /metrics")
-    points = _store(request).series(campaign_id, metric, player=player, session_id=session)
+    points = _store(request).series(campaign_id, metric, tag=tag.upper() if tag else None, session_id=session)
     return {"metric": metric, "points": points}
-
-
-@router.get("/campaigns/{campaign_id}/players/{name}", tags=["stats"])
-def player(campaign_id: int, name: str, request: Request) -> dict:
-    return {"player": name, "timeline": _store(request).player_timeline(campaign_id, name)}
 
 
 @router.get("/campaigns/{campaign_id}/history", tags=["stats"])

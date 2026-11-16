@@ -1,11 +1,11 @@
 # eu5-stats
 
-A FastAPI service that decodes **Europa Universalis V** binary save files (`.eu5`) and tracks per-player statistics across multiplayer campaigns.
+A FastAPI service that decodes **Europa Universalis V** binary save files (`.eu5`) and tracks per-country statistics across multiplayer campaigns.
 
 It does two things:
 
 1. **Decode**: turn a `.eu5` save into JSON (`POST /decode`).
-2. **Track stats**: group saves into *campaigns* and *sessions*, extract per-player metrics (gold, population, armies, score, and more) in a background worker, store them in SQLite, and serve time series, player timelines and session summaries.
+2. **Track stats**: group saves into *campaigns* and *sessions*, extract per-country metrics (gold, population, armies, score, and more) in a background worker, store them in SQLite, and serve time series, country timelines and session summaries.
 
 ## Requirements
 
@@ -41,9 +41,24 @@ curl localhost:8000/campaigns/1
 # 4. Query statistics
 curl "localhost:8000/campaigns/1/series?metric=population"
 curl "localhost:8000/campaigns/1/history?metric=tax_base"
-curl  localhost:8000/campaigns/1/players/<player-name>
+curl  localhost:8000/campaigns/1/countries/ENG
 curl  localhost:8000/sessions/1/summary
 ```
+
+### Tracked countries
+
+Statistics are stored per **country** (tag), not per player: several players may play the same tag over a
+campaign, and each snapshot records which players controlled it (empty for AI). Each campaign has a list of
+tracked countries:
+
+- Countries played by humans are added automatically when a save is processed.
+- Add any other country (e.g. an AI rival) with `POST /campaigns/{id}/countries` `{"tag": "DAN"}`.
+- Remove one with `DELETE /campaigns/{id}/countries/{tag}`: data already extracted is kept, saves processed
+  afterwards ignore it, and it is not re-added automatically.
+- Changes apply to saves processed afterwards; `reprocess` applies the current list to existing saves (a removed
+  country then loses its rows in the reprocessed saves).
+- A country is followed by its internal id, so a tag change (ENG forming GBR) keeps a single series. Results are
+  labelled with the current tag, and past tags also work in queries.
 
 Uploads are content-addressed (SHA-256): uploading the same file twice to a campaign is reported as `duplicate`. When several saves share the same in-game date, the most recently uploaded one is used for campaign-wide queries.
 
@@ -62,21 +77,24 @@ make reprocess CAMPAIGN=1
 | GET | `/metrics` | Available metrics and history metrics |
 | POST | `/campaigns` | Create a campaign `{name, description}` |
 | GET | `/campaigns` | List campaigns |
-| GET | `/campaigns/{id}` | Campaign details + latest snapshot per player |
+| GET | `/campaigns/{id}` | Campaign details + latest snapshot per country |
 | PATCH | `/campaigns/{id}` | Rename / change description |
 | DELETE | `/campaigns/{id}` | Delete (only if it has no sessions) |
+| GET | `/campaigns/{id}/countries` | Tracked countries (active and removed) with past tags and players |
+| POST | `/campaigns/{id}/countries` | Track a country `{tag}` (409 if already tracked) |
+| DELETE | `/campaigns/{id}/countries/{tag}` | Stop tracking a country (data is kept) |
+| GET | `/campaigns/{id}/countries/{tag}` | All metrics, tag and players of a country over time |
 | POST | `/campaigns/{id}/reprocess` | Re-extract every save of the campaign |
 | POST | `/campaigns/{id}/sessions` | Create a session and upload saves (multipart: `files`, `name`, `played_on`, `notes`) |
 | GET | `/campaigns/{id}/sessions` | List sessions |
 | GET | `/sessions/{id}` | Session details and its saves |
 | POST | `/sessions/{id}/saves` | Add more saves to a session |
 | DELETE | `/sessions/{id}` | Delete a session, its saves and orphaned files |
-| GET | `/sessions/{id}/summary` | Start / end / delta of every metric per player |
+| GET | `/sessions/{id}/summary` | Start / end / delta of every metric per country |
 | GET | `/saves/{id}` | Save details and processing status |
 | POST | `/saves/{id}/reprocess` | Re-extract one save |
-| GET | `/campaigns/{id}/series?metric=&player=&session=` | Metric over time per player |
-| GET | `/campaigns/{id}/players/{name}` | All metrics of a player over time |
-| GET | `/campaigns/{id}/history?metric=` | Yearly series kept by the game (`population`, `tax_base`, `economical_base`) per country tag |
+| GET | `/campaigns/{id}/series?metric=&tag=&session=` | Metric over time per country |
+| GET | `/campaigns/{id}/history?metric=` | Yearly series kept by the game (`population`, `tax_base`, `economical_base`) per country, with the players who played it |
 
 Save status is one of `pending`, `processing`, `done`, `error` (with an `error` message), plus an optional `warning` if a save belongs to a different playthrough than the rest of the campaign.
 

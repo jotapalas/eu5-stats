@@ -53,7 +53,7 @@ def test_full_flow(client, app, mp_save_bytes):
 
     assert ingestor.process_pending() == 1
     save = client.get(f"/saves/{save_id}").json()
-    assert save["status"] == "done" and save["players"] == 14 and save["game_date"] == "1367.1.5"
+    assert save["status"] == "done" and save["countries"] == save["players"] == 14 and save["game_date"] == "1367.1.5"
 
     # Same save in a second session of the same campaign -> duplicate.
     r = upload(client, cid, [("again.eu5", mp_save_bytes)], name="Session 2")
@@ -66,30 +66,41 @@ def test_full_flow(client, app, mp_save_bytes):
     assert len(client.get(f"/campaigns/{cid}/sessions").json()) == 2
 
     camp = client.get(f"/campaigns/{cid}").json()
-    assert len(camp["players"]) == 14 and camp["first_date"] == camp["last_date"] == "1367.1.5"
-    assert camp["latest"]["Miranda"]["tag"] == "ENG"
+    assert len(camp["countries"]) == 14 and camp["first_date"] == camp["last_date"] == "1367.1.5"
+    assert camp["latest"]["ENG"]["players"] == ["Miranda"]
 
     gold = client.get(f"/campaigns/{cid}/series", params={"metric": "gold"}).json()
     assert len(gold["points"]) == 14 and all(len(v) == 1 for v in gold["points"].values())
-    one = client.get(f"/campaigns/{cid}/series", params={"metric": "locations", "player": "Miranda", "session": sid})
-    assert one.json()["points"] == {"Miranda": [["1367.1.5", 157.0]]}
+    one = client.get(f"/campaigns/{cid}/series", params={"metric": "locations", "tag": "eng", "session": sid})
+    assert one.json()["points"] == {"ENG": [["1367.1.5", 157.0]]}
     assert client.get(f"/campaigns/{cid}/series", params={"metric": "nope"}).status_code == 422
 
     summary = client.get(f"/sessions/{sid}/summary").json()
-    assert summary["players"]["Miranda"]["locations"] == {"start": 157.0, "end": 157.0, "delta": 0.0}
+    assert summary["countries"]["ENG"]["locations"] == {"start": 157.0, "end": 157.0, "delta": 0.0}
 
-    timeline = client.get(f"/campaigns/{cid}/players/Miranda").json()["timeline"]
-    assert timeline[0]["tag"] == "ENG" and timeline[0]["metrics"]["locations"] == 157
-    assert client.get(f"/campaigns/{cid}/players/Nobody").status_code == 404
+    eng = client.get(f"/campaigns/{cid}/countries/ENG").json()
+    assert (eng["tag"], eng["country_id"]) == ("ENG", 289)
+    assert eng["timeline"][0]["players"] == ["Miranda"] and eng["timeline"][0]["metrics"]["locations"] == 157
+    assert client.get(f"/campaigns/{cid}/countries/XXX").status_code == 404
 
     hist = client.get(f"/campaigns/{cid}/history", params={"metric": "population"}).json()
     assert len(hist["series"]["ENG"]) == 31 and hist["players"]["ENG"] == ["Miranda"]
     assert client.get(f"/campaigns/{cid}/history", params={"metric": "gold"}).status_code == 422
 
-    # Reprocess.
+    # Tracked list: add an AI country and drop a played one; reprocessing applies the current list.
+    assert client.post(f"/campaigns/{cid}/countries", json={"tag": "dan"}).json()["country_id"] is None
+    assert client.post(f"/campaigns/{cid}/countries", json={"tag": "DAN"}).status_code == 409
+    assert client.post(f"/campaigns/{cid}/countries", json={"tag": "no way"}).status_code == 422
+    assert client.delete(f"/campaigns/{cid}/countries/SWE").status_code == 204
+    assert client.delete(f"/campaigns/{cid}/countries/SWE").status_code == 404
     assert client.post(f"/saves/{save_id}/reprocess").json() == {"queued": 1}
     assert ingestor.process_pending() == 1
-    assert client.get(f"/saves/{save_id}").json()["status"] == "done"
+    save = client.get(f"/saves/{save_id}").json()
+    assert save["status"] == "done" and save["countries"] == 14 and save["players"] == 13
+    countries = {c["tag"]: c for c in client.get(f"/campaigns/{cid}/countries").json()}
+    assert countries["DAN"]["country_id"] == 4 and countries["DAN"]["players"] == []
+    assert not countries["SWE"]["active"]
+    assert "SWE" not in client.get(f"/campaigns/{cid}").json()["latest"]
 
     # Same file in another campaign is processed independently; the stored file is shared.
     cid2 = client.post("/campaigns", json={"name": "Other"}).json()["id"]
@@ -102,7 +113,7 @@ def test_full_flow(client, app, mp_save_bytes):
     assert client.delete(f"/campaigns/{cid}").status_code == 409
     assert client.delete(f"/sessions/{sid}").status_code == 204
     assert client.delete(f"/sessions/{sid2}").status_code == 204
-    assert client.get(f"/campaigns/{cid}").json()["players"] == []
+    assert client.get(f"/campaigns/{cid}").json()["latest"] == {}
     assert upload_file.exists()  # still referenced by campaign "Other"
     assert client.delete(f"/campaigns/{cid}").status_code == 204
     assert client.delete(f"/sessions/{sid3}").status_code == 204
