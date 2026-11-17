@@ -30,7 +30,6 @@ export function Overview() {
   const { data: metrics } = useMetrics();
   const navigate = useNavigate();
   const [category, setCategory] = useState("all");
-  const [onlyPlayers, setOnlyPlayers] = useState(false);
   const [scope, setScope] = useVassalScope();
   const [sorting, setSorting] = useState<SortingState>([{ id: "score_place", desc: false }]);
 
@@ -45,9 +44,8 @@ export function Overview() {
           values: Object.fromEntries(
             (metrics?.metrics ?? []).map((m) => [m.name, s.metrics[resolveMetric(metrics?.vassal_metrics, m.name, scope)]]),
           ),
-        }))
-        .filter((r) => !onlyPlayers || players(r.label).length),
-    [campaign.latest, onlyPlayers, players, metrics, scope],
+        })),
+    [campaign.latest, players, metrics, scope],
   );
 
   const columns = useMemo(() => {
