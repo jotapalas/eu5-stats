@@ -59,6 +59,16 @@ def test_scalar_types():
     assert run(buf) == {"a": -7, "b": 1.0, "c": -1.5, "rgb_like": 0.0}
 
 
+def test_empty_string_token():
+    """0x0d42 has no payload: the next token is the following key (seen as `subunit_name_2`)."""
+    buf = tok(L.OPEN) + key(0) + EQ + tok(L.EMPTY_STRING) + key(1) + EQ + i32(3) + tok(L.CLOSE)
+    buf = key(2) + EQ + buf
+    assert run(buf) == {"c": {"a": "", "b": 3}}
+    assert skip_value(buf, 5) == len(buf)  # value starts after the u8 key (3 bytes) and `=`
+    assert [t for _, t, _ in L.iter_tokens(buf)].count(L.EMPTY_STRING) == 1
+    assert run(buf, select={"c": {"b": True}}) == {"c": {"b": 3}}
+
+
 def test_blocks_and_repeats():
     buf = (
         key(0) + EQ + OP + i32(1) + i32(2) + CL          # a = { 1 2 }

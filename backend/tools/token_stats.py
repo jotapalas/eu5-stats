@@ -23,6 +23,7 @@ from app.eu5.values import format_date, looks_like_date
 TYPE_NAMES = {
     L.I32: "i32", L.U32: "u32", L.F32: "f32", L.BOOL: "bool", L.QUOTED: "string",
     L.UNQUOTED: "string", L.F64: "fixed64", L.U64: "u64", L.I64: "i64", L.FIXED5_ZERO: "fixed5",
+    L.EMPTY_STRING: "string",
     **{t: "lookup" for t in L.LOOKUP_U8 | L.LOOKUP_U16},
     **{t: "fixed5" for t in L.FIXED5_POS},
     **{t: "fixed5" for t in L.FIXED5_NEG},

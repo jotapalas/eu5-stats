@@ -15,13 +15,13 @@ It does two things:
 ## Quick start (Docker)
 
 ```bash
-make build      # build the image (includes test dependencies)
-make up         # start the API on http://localhost:8000
-make logs       # follow logs
-make down       # stop
+make build         # build the images (the API image includes test dependencies)
+make up            # start the API on http://localhost:8000 and the web UI on http://localhost:5173
+make logs          # follow logs of all services (backend-logs / web-logs for one)
+make down          # stop
 ```
 
-Interactive API docs: <http://localhost:8000/docs>.
+Web UI: <http://localhost:5173>. Interactive API docs: <http://localhost:8000/docs>.
 
 Compose mounts the repository at `/app`, so code changes and saves in the repo root are visible without rebuilding. Run `make help` to list every target.
 
@@ -143,22 +143,50 @@ make test ARGS="-k units"    # pass extra pytest arguments
 
 Most tests need a real save at `tests/fixtures/test_save.eu5`. Save files are git-ignored (`*.eu5`), so on a fresh clone you must provide that fixture yourself; without it those tests are skipped and only the synthetic unit tests run. Any `*.eu5` in the repo root is also picked up by the per-save tests.
 
+## Frontend
+
+`frontend/` is a React + Vite + TypeScript SPA (UI in Spanish) for viewing and managing campaigns:
+
+- **Ranking**: latest snapshot of every country, sortable by any metric.
+- **Comparativa**: one metric over time for selected countries in a single metric list: metrics the game keeps as yearly history (population, tax base, economic base) use that series; the rest use one point per save.
+- **Ficha de país**: small multiples of every metric for one country, with players and tag changes.
+- **Sesiones**: upload saves (with progress and live processing status), per-session changes, reprocessing.
+- **Ajustes**: tracked countries, reprocess, rename/delete the campaign.
+
+The browser talks to the API through `/api` (Vite proxy in development, nginx in production), so no CORS is needed.
+
+```bash
+make web-logs      # dev server logs
+make web-lint      # tsc + eslint
+make web-test      # vitest
+make web-build     # production image (nginx serving the build and proxying /api)
+make web-prod-up   # serve it on http://localhost:8080
+```
+
+Without Docker: `cd frontend && npm install && API_URL=http://localhost:8000 npm run dev`.
+
 ## Project layout
 
 ```
-app/
-  main.py            FastAPI app factory, /health, /decode
-  eu5/               binary save decoder (container, lexer, parser, values, tokens)
-  stats/             campaigns/sessions: API, SQLite store, ingest worker, extraction, metrics
-tools/token_stats.py report on unresolved native tokens
-tokens/eu5.txt       native token id -> name table
-tests/               pytest suite (+ fixtures/test_save.eu5, not versioned)
-data/                runtime data: eu5stats.db and uploads/ (not versioned)
+backend/
+  app/main.py          FastAPI app factory, /health, /decode
+  app/eu5/             binary save decoder (container, lexer, parser, values, tokens)
+  app/stats/           campaigns/sessions: API, SQLite store, ingest worker, extraction, metrics
+  tools/token_stats.py report on unresolved native tokens
+  tokens/eu5.txt       native token id -> name table
+  tests/               pytest suite (+ fixtures/test_save.eu5, not versioned)
+  data/                runtime data: eu5stats.db and uploads/ (not versioned)
+frontend/
+  src/api/             fetch client, response types, TanStack Query hooks
+  src/lib/             formatting (game dates, numbers) and country colours
+  src/components/      chart, pickers, UI primitives
+  src/pages/           one component per route
 ```
 
 ## Useful commands
 
 ```bash
-make shell      # bash inside the container
+make shell      # bash inside the API container
+make web-shell  # sh inside the frontend container
 make db-shell   # sqlite3 on data/eu5stats.db
 ```

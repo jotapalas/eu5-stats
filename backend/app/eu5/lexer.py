@@ -7,6 +7,10 @@ any other u16 is a native "name" token whose text lives in the game executable
 EU5-specific tokens (0x0d3e-0x0d5b) were identified empirically from real saves:
   * lookups: index into the `string_lookup` table (u8 or u16 little-endian)
   * fixed5:  unsigned magnitude of 0..7 bytes, value = +-raw / 100000
+  * 0x0d42:  no payload, decoded as an empty string. Seen only as the value of
+             `subunit_name_2`, which is otherwise a u16 lookup (a place name); lexing whole
+             saves with a 0-byte payload ends exactly at the end with balanced blocks.
+             Index 0 is encoded with the normal u8 lookup, so it is not "lookup #0".
 """
 from __future__ import annotations
 
@@ -30,6 +34,8 @@ I64 = 0x0317  # not observed in EU5 saves yet
 LOOKUP_U8 = frozenset({0x0D40, 0x0D43, 0x0D5A})
 LOOKUP_U16 = frozenset({0x0D3E, 0x0D44, 0x0D5B})
 
+EMPTY_STRING = 0x0D42
+
 FIXED5_ZERO = 0x0D47
 FIXED5_POS = {0x0D48 + k: k + 1 for k in range(7)}  # 0x0d48..0x0d4e -> 1..7 bytes
 FIXED5_NEG = {0x0D4F + k: k + 1 for k in range(7)}  # 0x0d4f..0x0d55 -> 1..7 bytes
@@ -39,7 +45,7 @@ FIXED5_NEG = {0x0D4F + k: k + 1 for k in range(7)}  # 0x0d4f..0x0d55 -> 1..7 byt
 EU5_TYPE_RANGE = range(0x0D3E, 0x0D60)
 
 KNOWN = (
-    {EQUAL, OPEN, CLOSE, I32, F32, BOOL, QUOTED, U32, UNQUOTED, F64, U64, I64, FIXED5_ZERO}
+    {EQUAL, OPEN, CLOSE, I32, F32, BOOL, QUOTED, U32, UNQUOTED, F64, U64, I64, FIXED5_ZERO, EMPTY_STRING}
     | LOOKUP_U8
     | LOOKUP_U16
     | set(FIXED5_POS)
@@ -99,6 +105,8 @@ def iter_tokens(buf: bytes) -> Iterator[tuple[int, int, object]]:
             v = u16(buf, i)[0]; i += 2
         elif t == FIXED5_ZERO:
             v = 0
+        elif t == EMPTY_STRING:
+            v = b""
         elif t in FIXED5_POS:
             size = FIXED5_POS[t]
             v = int.from_bytes(buf[i : i + size], "little"); i += size

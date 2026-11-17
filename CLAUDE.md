@@ -16,8 +16,10 @@ Dependencies are minimal on purpose: `fastapi`, `uvicorn`, `python-multipart`, `
 The app normally runs in Docker; the repo is bind-mounted at `/app`.
 
 ```bash
-make build / make up / make down / make logs
+make build / make up / make down
+make logs                      # all services; backend-logs / web-logs for one
 make test                      # pytest in the container
+make web-lint / make web-test  # frontend: tsc + eslint / vitest (in the node container)
 make test ARGS="tests/test_units.py -x"
 make shell                     # bash in the container
 make db-shell                  # sqlite3 data/eu5stats.db
@@ -27,6 +29,18 @@ make token-stats [ARGS=--json] # unresolved native tokens across saves
 Locally (no Docker): `pip install -r requirements-dev.txt`, `pytest`, `uvicorn app.main:app --reload`. `pyproject.toml` sets `pythonpath = ["."]` and `testpaths = ["tests"]`.
 
 The repo lives on WSL (`\\wsl.localhost\Ubuntu\root\eu5-stats`); from Windows, git needs `-c safe.directory='*'` (dubious ownership).
+
+## Frontend (`frontend/`)
+
+React 18 + Vite + TypeScript (strict), TanStack Query, TanStack Table, Recharts, Tailwind. UI text in Spanish (all labels in `src/i18n.ts`, including Spanish metric names in `METRIC_LABELS`); code in English.
+
+- Served by the `web` compose service (Vite dev server, port 5173, `node_modules` in an anonymous volume). `/api/*` is proxied to the backend with the prefix stripped (`vite.config.ts`, `API_URL`; `nginx.conf` in the production image, profile `prod`, port 8080). The backend has no CORS on purpose.
+- `src/api/types.ts` mirrors the dicts returned by `Store`; update it when a response shape changes. `src/api/hooks.ts`: every campaign-scoped query key starts with `["campaign", id]`; `CampaignLayout` invalidates them all when `saves_done` changes. Campaign/session queries poll every 2 s while saves are pending.
+- `CampaignLayout` provides `useCampaignCtx()` (campaign, sorted `tags`, `color(tag)`, `players(tag)`) to the pages.
+- Colours (`src/lib/colors.ts`): 8 validated categorical hues (light/dark steps) assigned by sorted tag; countries 9–16 reuse them dashed, the rest grey. Never cycle or generate new hues.
+- X axis = game date as a fractional year (`gameDateToYear`, 365-day years), one point per save. `Compare` has no source toggle: a metric listed in `/metrics` `history_metrics` is charted from `/history` (yearly, covers years before the first save), any other from `/series`.
+- Rank metrics (`RANK_METRICS` in `src/lib/format.ts`: `score_place`, `great_power_rank`; 1 = best, values up to ~2000) use `TimeSeriesChart rank`: reversed log Y axis with power-of-ten ticks, values <= 0 dropped, legend sorted ascending. `LOWER_IS_BETTER` is broader (also inflation, war exhaustion) and only affects delta colours and sort direction.
+- Add a view: page in `src/pages/`, route in `App.tsx`, tab in `CampaignLayout` `TABS` if needed, data hook in `hooks.ts`. New metrics need a Spanish label in `METRIC_LABELS` (otherwise the API description is shown).
 
 ## Architecture and data flow
 

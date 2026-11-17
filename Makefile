@@ -4,22 +4,29 @@ COMPOSE ?= docker compose
 URL ?= http://localhost:8000
 SAVE ?=
 
-.PHONY: help build up down logs test shell db-shell decode token-stats campaign session reprocess
+.PHONY: help build up down logs backend-logs web-logs test shell db-shell decode token-stats campaign session \
+	reprocess web-shell web-lint web-test web-build web-prod-up
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build the Docker image
+build: ## Build the Docker images
 	$(COMPOSE) build
 
-up: ## Start the API in the background (port 8000)
+up: ## Start the API (port 8000) and the frontend dev server (port 5173) in the background
 	$(COMPOSE) up -d
 
-down: ## Stop the API
-	$(COMPOSE) down
+down: ## Stop all services
+	$(COMPOSE) --profile prod down
 
-logs: ## Follow API logs
+logs: ## Follow logs of all services
+	$(COMPOSE) logs -f
+
+backend-logs: ## Follow API logs
 	$(COMPOSE) logs -f api
+
+web-logs: ## Follow frontend dev server logs
+	$(COMPOSE) logs -f web
 
 test: ## Run the test suite inside the container
 	$(COMPOSE) run --rm api pytest $(ARGS)
@@ -56,3 +63,18 @@ session: ## Upload a session's saves: make session CAMPAIGN=<id> DIR=<folder> [N
 reprocess: ## Re-extract every save of a campaign: make reprocess CAMPAIGN=<id>
 	@test -n "$(CAMPAIGN)" || (echo "Usage: make reprocess CAMPAIGN=<id>"; exit 1)
 	curl -sSf -X POST "$(URL)/campaigns/$(CAMPAIGN)/reprocess"; echo
+
+web-shell: ## Open a shell in the frontend container
+	$(COMPOSE) run --rm web sh
+
+web-lint: ## Type-check and lint the frontend
+	$(COMPOSE) run --rm web sh -c "npm install --no-fund --no-audit && npm run typecheck && npm run lint"
+
+web-test: ## Run the frontend unit tests (vitest)
+	$(COMPOSE) run --rm web sh -c "npm install --no-fund --no-audit && npm test -- $(ARGS)"
+
+web-build: ## Build the production frontend image (nginx)
+	$(COMPOSE) --profile prod build web-prod
+
+web-prod-up: ## Serve the production frontend on port 8080
+	$(COMPOSE) --profile prod up -d web-prod

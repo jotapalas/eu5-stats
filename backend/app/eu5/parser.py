@@ -135,6 +135,8 @@ def index_top_level(buf, strings: list[str], tokens: TokenTable) -> dict[str, li
             key = decode_text(bytes(buf[i + 2 : i + 2 + ln]))
         elif s == -2:
             raise L.TokenError(f"Unknown EU5 value token {t:#06x}", buf, i - 2)
+        elif t == L.EMPTY_STRING:
+            key = ""
         elif s == 0 and t not in _NUMERIC:
             key = tokens.resolve(t)
         else:
@@ -238,6 +240,8 @@ def parse(
             return i32(buf, i)[0], i + 4, INT32
         if t == L.FIXED5_ZERO:
             return 0.0, i, PLAIN
+        if t == L.EMPTY_STRING:
+            return "", i, PLAIN
         if t in FNEG:
             size = FNEG[t]
             return -from_bytes(buf[i : i + size], "little") / FIXED5_SCALE, i + size, PLAIN
