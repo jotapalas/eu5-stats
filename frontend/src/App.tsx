@@ -9,6 +9,19 @@ import { SessionDetail } from "./pages/SessionDetail";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
 import { READONLY } from "./lib/mode";
+import { setDarkMode, useDarkMode } from "./lib/colors";
+import { THEME_LABELS } from "./i18n";
+
+function ThemeToggle() {
+  const dark = useDarkMode();
+  const label = dark ? THEME_LABELS.light : THEME_LABELS.dark;
+  return (
+    <button type="button" className="btn btn-sm ml-auto" onClick={() => setDarkMode(!dark)} title={label} aria-label={label}>
+      <span aria-hidden>{dark ? "☀" : "☾"}</span>
+      {label}
+    </button>
+  );
+}
 
 export function App() {
   return (
@@ -19,6 +32,7 @@ export function App() {
             EU5 Stats
           </Link>
           <span className="text-xs muted">Estadísticas de campañas multijugador</span>
+          <ThemeToggle />
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">

@@ -1,9 +1,18 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" style="color-scheme: light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EU5 Stats</title>
+    <script>
+      // Apply the stored theme before first paint (same key as src/lib/colors.ts).
+      try {
+        if (localStorage.getItem("eu5stats.theme") === "dark") {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

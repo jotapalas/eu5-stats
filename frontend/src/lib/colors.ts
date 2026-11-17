@@ -33,15 +33,45 @@ export function colorScale(tags: Iterable<string>, dark = false): ColorScale {
 }
 
 // ------------------------------------------------------------------ dark mode
-const media = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+// Light by default regardless of the OS preference; dark is an opt-in remembered per browser.
+// index.html applies the stored choice before first paint to avoid a flash.
+const THEME_KEY = "eu5stats.theme";
+const listeners = new Set<() => void>();
+
+function readStored(): boolean {
+  try {
+    return localStorage.getItem(THEME_KEY) === "dark";
+  } catch {
+    return false;
+  }
+}
+
+let dark = typeof window !== "undefined" && readStored();
+
+function applyTheme(value: boolean) {
+  const root = document.documentElement;
+  root.classList.toggle("dark", value);
+  root.style.colorScheme = value ? "dark" : "light";
+}
+
+export function setDarkMode(value: boolean) {
+  dark = value;
+  try {
+    localStorage.setItem(THEME_KEY, value ? "dark" : "light");
+  } catch {
+    // storage unavailable: the choice just won't survive a reload
+  }
+  applyTheme(value);
+  listeners.forEach((cb) => cb());
+}
 
 export function useDarkMode(): boolean {
   return useSyncExternalStore(
     (cb) => {
-      media?.addEventListener("change", cb);
-      return () => media?.removeEventListener("change", cb);
+      listeners.add(cb);
+      return () => listeners.delete(cb);
     },
-    () => media?.matches ?? false,
+    () => dark,
     () => false,
   );
 }

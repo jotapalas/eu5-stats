@@ -67,3 +67,5 @@ export const STATUS_LABELS_PLURAL: Record<string, string> = {
   error: "con error",
   duplicate: "duplicados",
 };
+
+export const THEME_LABELS = { dark: "Modo oscuro", light: "Modo claro" };
