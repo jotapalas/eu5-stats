@@ -1,4 +1,5 @@
 # Saves and decoded output (large files)
+*.eu5
 
 __pycache__/
 .pytest_cache/
