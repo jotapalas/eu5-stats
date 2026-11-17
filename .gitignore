@@ -5,3 +5,6 @@ __pycache__/
 .pytest_cache/
 # Stats database and stored uploads
 data/
+
+# Cloudflare credentials for `make publish`
+.env

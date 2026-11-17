@@ -7,6 +7,7 @@ import { keys, useCampaign } from "../api/hooks";
 import type { CampaignDetail } from "../api/types";
 import { ErrorBox, Spinner, StatusBadge } from "../components/ui";
 import { colorScale, useDarkMode, type ColorScale } from "../lib/colors";
+import { READONLY } from "../lib/mode";
 
 export interface CampaignCtx {
   campaign: CampaignDetail;
@@ -24,7 +25,8 @@ const TABS = [
   { to: "", label: "Ranking", end: true },
   { to: "compare", label: "Comparativa" },
   { to: "sessions", label: "Sesiones" },
-  { to: "settings", label: "Ajustes" },
+  // Management only exists locally; the public read-only build has no settings.
+  ...(READONLY ? [] : [{ to: "settings", label: "Ajustes" }]),
 ];
 
 export function CampaignLayout() {

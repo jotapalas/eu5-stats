@@ -40,6 +40,7 @@ React 18 + Vite + TypeScript (strict), TanStack Query, TanStack Table, Recharts,
 - Colours (`src/lib/colors.ts`): 8 validated categorical hues (light/dark steps) assigned by sorted tag; countries 9–16 reuse them dashed, the rest grey. Never cycle or generate new hues.
 - X axis = game date as a fractional year (`gameDateToYear`, 365-day years), one point per save. `Compare` has no source toggle: a metric listed in `/metrics` `history_metrics` is charted from `/history` (yearly, covers years before the first save), any other from `/series`.
 - Rank metrics (`RANK_METRICS` in `src/lib/format.ts`: `score_place`, `great_power_rank`; 1 = best, values up to ~2000) use `TimeSeriesChart rank`: reversed log Y axis with power-of-ten ticks, values <= 0 dropped, legend sorted ascending. `LOWER_IS_BETTER` is broader (also inflation, war exhaustion) and only affects delta colours and sort direction.
+- Read-only public build (`VITE_READONLY=1`, `src/lib/mode.ts`): `get()` reads static files via `staticPath()` in `src/api/client.ts` instead of `/api`, writes are rejected and management UI/routes are hidden. The files come from `backend/tools/export_static.py` (`make public-build` / `make publish` to Cloudflare Pages). A new read endpoint used by the UI must be added to the exporter and to `staticPath` (+ its test).
 - Add a view: page in `src/pages/`, route in `App.tsx`, tab in `CampaignLayout` `TABS` if needed, data hook in `hooks.ts`. New metrics need a Spanish label in `METRIC_LABELS` (otherwise the API description is shown).
 
 ## Architecture and data flow

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, del, errorMessage, get, post, query } from "./client";
+import { ApiError, del, errorMessage, get, post, query, staticPath } from "./client";
 
 function mockFetch(status: number, body?: unknown) {
   const fn = vi.fn().mockResolvedValue(
@@ -40,6 +40,20 @@ describe("api client", () => {
     expect(err.status).toBe(409);
     expect(err.message).toBe("Campaign has sessions; delete them first");
   });
+});
+
+describe("staticPath", () => {
+  it.each([
+    ["/metrics", "/data/metrics.json"],
+    ["/campaigns", "/data/campaigns.json"],
+    ["/campaigns/1", "/data/campaigns/1.json"],
+    ["/campaigns/1/series?metric=gold", "/data/campaigns/1/series/gold.json"],
+    ["/campaigns/1/history?metric=tax_base", "/data/campaigns/1/history/tax_base.json"],
+    ["/campaigns/1/countries/ENG", "/data/campaigns/1/countries/ENG.json"],
+    ["/campaigns/1/sessions", "/data/campaigns/1/sessions.json"],
+    ["/sessions/3", "/data/sessions/3.json"],
+    ["/sessions/3/summary", "/data/sessions/3/summary.json"],
+  ])("%s -> %s", (path, file) => expect(staticPath(path)).toBe(file));
 });
 
 describe("helpers", () => {

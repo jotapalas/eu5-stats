@@ -6,6 +6,7 @@ import { useSessions, useUpload } from "../api/hooks";
 import type { UploadResult } from "../api/types";
 import { FileDropzone } from "../components/pickers";
 import { Empty, ErrorBox, PageTitle, Spinner, StatusBadge } from "../components/ui";
+import { READONLY } from "../lib/mode";
 import { useCampaignCtx } from "./CampaignLayout";
 
 export function Sessions() {
@@ -15,10 +16,10 @@ export function Sessions() {
 
   return (
     <div>
-      <PageTitle actions={<button className="btn btn-primary" onClick={() => setOpen((v) => !v)}>Subir sesión</button>}>
+      <PageTitle actions={!READONLY && <button className="btn btn-primary" onClick={() => setOpen((v) => !v)}>Subir sesión</button>}>
         Sesiones
       </PageTitle>
-      {(open || data?.length === 0) && <UploadForm campaignId={id} />}
+      {!READONLY && (open || data?.length === 0) && <UploadForm campaignId={id} />}
       {isLoading && <Spinner />}
       <ErrorBox error={error} />
       {data && data.length === 0 && <Empty>No hay sesiones todavía.</Empty>}

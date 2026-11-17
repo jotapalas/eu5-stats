@@ -16,6 +16,7 @@ import { Empty, Segmented, Spinner } from "../components/ui";
 import { Swatch } from "../components/ui-swatch";
 import { categoryLabel, metricLabel } from "../i18n";
 import { formatValue, LOWER_IS_BETTER } from "../lib/format";
+import { READONLY } from "../lib/mode";
 import { useCampaignCtx } from "./CampaignLayout";
 
 type Row = Snapshot & { label: string };
@@ -81,7 +82,8 @@ export function Overview() {
   if (!Object.keys(campaign.latest).length)
     return (
       <Empty>
-        Aún no hay estadísticas. <Link to="sessions" className="text-indigo-600 hover:underline">Sube una sesión</Link> para empezar.
+        Aún no hay estadísticas.{" "}
+        {!READONLY && <><Link to="sessions" className="text-indigo-600 hover:underline">Sube una sesión</Link> para empezar.</>}
       </Empty>
     );
 

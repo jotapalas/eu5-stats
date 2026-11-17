@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { useCampaigns, useCreateCampaign } from "../api/hooks";
 import { Empty, ErrorBox, PageTitle, Spinner, StatusBadge } from "../components/ui";
+import { READONLY } from "../lib/mode";
 
 export function CampaignList() {
   const { data, error, isLoading } = useCampaigns();
@@ -10,7 +11,7 @@ export function CampaignList() {
 
   return (
     <div>
-      <PageTitle actions={<button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>Nueva campaña</button>}>
+      <PageTitle actions={!READONLY && <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>Nueva campaña</button>}>
         Campañas
       </PageTitle>
       {creating && <CreateCampaign onDone={() => setCreating(false)} />}

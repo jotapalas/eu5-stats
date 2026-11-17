@@ -165,6 +165,24 @@ make web-prod-up   # serve it on http://localhost:8080
 
 Without Docker: `cd frontend && npm install && API_URL=http://localhost:8000 npm run dev`.
 
+## Publishing a read-only site (Cloudflare Pages)
+
+Saves are processed and managed on your machine; a read-only copy of the statistics is published as a
+static site. `backend/tools/export_static.py` writes every read endpoint's response to JSON files, and
+the frontend built with `VITE_READONLY=1` reads those files and hides management (uploads, settings,
+delete, reprocess). No server or database runs in the cloud: publish again after uploading saves.
+
+```bash
+make public-build                 # frontend/dist-public: read-only build + data/ (CAMPAIGN=<id> for one)
+make public-preview               # serve it on http://localhost:4173 (PREVIEW_PORT=...)
+make public-preview-stop
+make publish                      # build and deploy with wrangler to Cloudflare Pages
+```
+
+`make publish` needs a `.env` (git-ignored) with `CLOUDFLARE_API_TOKEN` (permission *Cloudflare Pages: Edit*)
+and `CLOUDFLARE_ACCOUNT_ID`; the project name defaults to `eu5-stats` (`PAGES_PROJECT=...`). Pages' free plan
+allows 20,000 files and 25 MiB per file; a 500-year campaign is roughly 110 files and 12 MB.
+
 ## Project layout
 
 ```

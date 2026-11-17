@@ -8,6 +8,7 @@ import { ErrorBox, PageTitle, Spinner, StatusBadge } from "../components/ui";
 import { Swatch } from "../components/ui-swatch";
 import { metricLabel } from "../i18n";
 import { countryLabel, deltaTone, formatDelta, formatValue, LOWER_IS_BETTER } from "../lib/format";
+import { READONLY } from "../lib/mode";
 import { useCampaignCtx } from "./CampaignLayout";
 import { UploadForm } from "./Sessions";
 
@@ -32,7 +33,7 @@ export function SessionDetail() {
     <div className="space-y-5">
       <PageTitle
         actions={
-          <>
+          !READONLY && <>
             <button className="btn" onClick={() => setAdding((v) => !v)}>Añadir saves</button>
             <button className="btn btn-danger" onClick={remove} disabled={del.isPending}>Borrar sesión</button>
           </>
@@ -50,7 +51,18 @@ export function SessionDetail() {
 
       <Summary sid={sid} />
 
-      <div className="card overflow-x-auto p-0">
+      {/* Collapsed by default; the summary line shows the count and status of the saves. */}
+      <details className="card group p-0">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium">
+          <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+          Saves <span className="text-sm font-normal muted">({session.saves})</span>
+          <span className="ml-auto flex gap-1">
+            {Object.entries(session.saves_by_status).map(([st, n]) => (
+              <StatusBadge key={st} status={st} count={n} />
+            ))}
+          </span>
+        </summary>
+        <div className="overflow-x-auto border-t border-slate-200 dark:border-slate-800">
         <table className="table-base">
           <thead>
             <tr>
@@ -59,7 +71,7 @@ export function SessionDetail() {
               <th>Versión</th>
               <th>Estado</th>
               <th>Detalle</th>
-              <th />
+              {!READONLY && <th />}
             </tr>
           </thead>
           <tbody>
@@ -73,16 +85,17 @@ export function SessionDetail() {
                   {s.error && <span className="text-red-700 dark:text-red-400">{s.error}</span>}
                   {s.warning && <span className="text-amber-700 dark:text-amber-400">{s.warning}</span>}
                 </td>
-                <td className="text-right">
+                {!READONLY && <td className="text-right">
                   <button className="btn btn-sm" onClick={() => reprocess.mutate(s.id)} disabled={s.status === "pending" || s.status === "processing"}>
                     Reprocesar
                   </button>
-                </td>
+                </td>}
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

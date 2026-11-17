@@ -3,12 +3,20 @@ SHELL := /bin/bash
 COMPOSE ?= docker compose
 URL ?= http://localhost:8000
 SAVE ?=
+PUBLIC_DIR := frontend/dist-public
+PAGES_PROJECT ?= eu5-stats
+PREVIEW_PORT ?= 4173
+WRANGLER := wrangler@3.99.0
+
+# Cloudflare credentials for `make publish` (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID), kept out of git.
+-include .env
+export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
 
 .PHONY: help build up down logs backend-logs web-logs test shell db-shell decode token-stats campaign session \
-	reprocess web-shell web-lint web-test web-build web-prod-up
+	reprocess web-shell web-lint web-test web-build web-prod-up public-build public-preview public-preview-stop publish
 
 help: ## List available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build the Docker images
 	$(COMPOSE) build
@@ -78,3 +86,24 @@ web-build: ## Build the production frontend image (nginx)
 
 web-prod-up: ## Serve the production frontend on port 8080
 	$(COMPOSE) --profile prod up -d web-prod
+
+public-build: ## Build the public read-only site (frontend + exported JSON) in frontend/dist-public
+	$(COMPOSE) run --rm --no-deps -e VITE_READONLY=1 web sh -c \
+		"npm install --no-fund --no-audit && npm run build -- --outDir dist-public --emptyOutDir"
+	$(COMPOSE) run --rm --no-deps -v "$(CURDIR)/$(PUBLIC_DIR):/public" api \
+		python -m tools.export_static /public $(if $(CAMPAIGN),--campaign $(CAMPAIGN))
+
+public-preview: public-build ## Serve the public site locally on PREVIEW_PORT (default 4173)
+	-docker rm -f eu5-public-preview >/dev/null 2>&1
+	$(COMPOSE) run -d --rm --no-deps --name eu5-public-preview -p $(PREVIEW_PORT):$(PREVIEW_PORT) web \
+		sh -c "npm install --no-fund --no-audit && npx vite preview --outDir dist-public --host --port $(PREVIEW_PORT) --strictPort"
+	@echo "Public preview on http://localhost:$(PREVIEW_PORT)"
+
+public-preview-stop: ## Stop the local preview of the public site
+	-docker rm -f eu5-public-preview
+
+publish: public-build ## Build and deploy the public site to Cloudflare Pages (needs .env with CLOUDFLARE_*)
+	@test -n "$(CLOUDFLARE_API_TOKEN)" -a -n "$(CLOUDFLARE_ACCOUNT_ID)" || \
+		(echo "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in .env"; exit 1)
+	$(COMPOSE) run --rm --no-deps -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID web \
+		npx --yes $(WRANGLER) pages deploy dist-public --project-name $(PAGES_PROJECT) --branch main --commit-dirty=true

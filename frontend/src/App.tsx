@@ -8,6 +8,7 @@ import { Overview } from "./pages/Overview";
 import { SessionDetail } from "./pages/SessionDetail";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
+import { READONLY } from "./lib/mode";
 
 export function App() {
   return (
@@ -29,7 +30,7 @@ export function App() {
             <Route path="country/:tag" element={<Country />} />
             <Route path="sessions" element={<Sessions />} />
             <Route path="sessions/:sid" element={<SessionDetail />} />
-            <Route path="settings" element={<Settings />} />
+            {!READONLY && <Route path="settings" element={<Settings />} />}
           </Route>
           <Route path="*" element={<p className="muted">Página no encontrada.</p>} />
         </Routes>

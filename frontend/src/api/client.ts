@@ -1,6 +1,23 @@
-/** Thin fetch wrapper around the backend, reached through the /api proxy (Vite in dev, nginx in prod). */
+/**
+ * Thin fetch wrapper around the backend, reached through the /api proxy (Vite in dev, nginx in prod).
+ * In the read-only build, GETs are served from static JSON files instead (see `staticPath`).
+ */
+import { READONLY } from "../lib/mode";
 
 export const API_BASE = "/api";
+export const STATIC_BASE = "/data";
+
+/**
+ * API GET path -> static file exported by backend/tools/export_static.py (keep both in sync):
+ * `/campaigns/1/series?metric=gold` -> `/data/campaigns/1/series/gold.json`.
+ */
+export function staticPath(path: string): string {
+  const [route, qs = ""] = path.split("?");
+  const metric = new URLSearchParams(qs).get("metric");
+  const m = route.match(/^\/campaigns\/(\d+)\/(series|history)$/);
+  if (m && metric) return `${STATIC_BASE}/campaigns/${m[1]}/${m[2]}/${encodeURIComponent(metric)}.json`;
+  return `${STATIC_BASE}${route}.json`;
+}
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -35,12 +52,20 @@ export function query(params: Record<string, string | number | null | undefined>
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (READONLY && init.method && init.method !== "GET") throw new ApiError(405, "Versión de solo lectura");
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
   return parse<T>(await fetch(API_BASE + path, { ...init, headers }));
 }
 
-export const get = <T>(path: string) => api<T>(path);
+async function getStatic<T>(path: string): Promise<T> {
+  const res = await fetch(staticPath(path));
+  // Pages answers missing files with the SPA's index.html, so check the content type too.
+  if (!res.ok || !res.headers.get("content-type")?.includes("json")) throw new ApiError(404, "Datos no publicados");
+  return (await res.json()) as T;
+}
+
+export const get = <T>(path: string) => (READONLY ? getStatic<T>(path) : api<T>(path));
 export const post = <T>(path: string, body?: unknown) =>
   api<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 export const patch = <T>(path: string, body: unknown) =>
@@ -49,6 +74,7 @@ export const del = (path: string) => api<void>(path, { method: "DELETE" });
 
 /** Multipart upload with progress (fetch has no upload progress events). */
 export function upload<T>(path: string, form: FormData, onProgress?: (fraction: number) => void): Promise<T> {
+  if (READONLY) return Promise.reject(new ApiError(405, "Versión de solo lectura"));
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", API_BASE + path);
