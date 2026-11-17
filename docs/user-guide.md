@@ -18,8 +18,7 @@ The start page lists the campaigns. Open one to see its tabs:
 | **Sesiones** | Each play session and what changed during it |
 | **Ajustes** | Organiser only: tracked countries, main players, rename/delete |
 
-Every metric is explained in [metrics.md](metrics.md). Hovering a column or chart title also shows a short
-English description.
+Every metric is explained in [metrics.md](metrics.md).
 
 ## Ranking
 
