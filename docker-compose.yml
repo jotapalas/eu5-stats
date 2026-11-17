@@ -9,6 +9,9 @@ services:
     volumes:
       # Mount the backend so code, data/ and saves (*.eu5 in backend/) are visible without rebuilding.
       - ./backend:/app
+      # Docs and frontend sources at the same paths relative to /app as in the repo (make docs, tests).
+      - ./docs:/docs
+      - ./frontend/src:/frontend/src:ro
 
   # Frontend dev server (Vite, hot reload) on http://localhost:5173; /api is proxied to the backend.
   web:

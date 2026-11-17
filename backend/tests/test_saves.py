@@ -1,4 +1,6 @@
-"""Tests against the real saves in the repo (every *.eu5 in the root and ./saves)."""
+"""Tests against the real saves in the repo (every *.eu5 in backend/ and backend/tests/fixtures).
+
+Only format invariants are asserted, never values specific to one save."""
 import orjson
 from fastapi.testclient import TestClient
 
@@ -95,18 +97,17 @@ def test_selective_matches_full(mp_save_bytes):
         assert isinstance(country, dict) and "rgb" in country["color"]
 
 
-def test_mp_metadata_contents(mp_save_bytes):
+def test_mp_metadata_contents(mp_save_bytes, mp_stats):
     out = decode_save(mp_save_bytes, sections=("header", "metadata"), tokens=EMPTY_TOKENS)
     meta = out["metadata"]
     assert list(meta) == ["0x09de"]
     values = set(_find(meta, lambda v: isinstance(v, str)))
-    assert "1367.1.5 - Sweden" in values
-    assert "1.4.7" in values
-    assert "1367.1.5" in values  # i32 date decoded
-    assert "6d75096e-7442-4df4-966d-60166977abcd" in values
+    assert mp_stats.game_date in values  # i32 date decoded
+    assert mp_stats.version in values
+    assert mp_stats.playthrough_id in values
 
 
-def test_api(mp_save_bytes, tmp_path):
+def test_api(mp_save_bytes, mp_facts, tmp_path):
     client = TestClient(create_app(tmp_path, start_worker=False))
     assert client.get("/health").json()["status"] == "ok"
 
@@ -115,7 +116,7 @@ def test_api(mp_save_bytes, tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"header", "metadata", "unknown_tokens"}
-    assert body["header"]["metadata_len"] == 404229
+    assert body["header"]["metadata_len"] == mp_facts.metadata_len
 
     r = client.post("/decode", files={"file": ("bad.eu5", b"not a save")})
     assert r.status_code == 422
@@ -135,7 +136,7 @@ def test_api(mp_save_bytes, tmp_path):
     assert set(orjson.loads(r.content)["gamestate"]) == {"played_country", "war_manager"}
 
 
-def test_token_stats():
+def test_token_stats(mp_save_bytes, mp_stats):
     from tests.conftest import MP_SAVE
     from tools.token_stats import collect
 
@@ -144,4 +145,4 @@ def test_token_stats():
     meta = stats[0x09DE]  # metadata root key
     assert meta["as_key"] >= 1 and meta["path"] == "0x09de"
     date = stats[0x06B5]  # i32 date field in the metadata
-    assert date["value_types"]["i32"] >= 1 and "1367.1.5" in date["sample"]
+    assert date["value_types"]["i32"] >= 1 and mp_stats.game_date in date["sample"]

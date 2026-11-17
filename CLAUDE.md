@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Context for working on this repository. See [README.md](README.md) for user-facing usage.
+Context for working on this repository. Human docs live in [docs/](docs/) (index in [README.md](README.md));
+keep them in sync when behaviour, commands or the save format change.
 
 ## What this is
 
@@ -24,6 +25,7 @@ make test ARGS="tests/test_units.py -x"
 make shell                     # bash in the container
 make db-shell                  # sqlite3 data/eu5stats.db
 make token-stats [ARGS=--json] # unresolved native tokens across saves
+make docs                      # regenerate docs/metrics.md (tools/metrics_doc.py)
 ```
 
 Locally (no Docker): `pip install -r requirements-dev.txt`, `pytest`, `uvicorn app.main:app --reload`. `pyproject.toml` sets `pythonpath = ["."]` and `testpaths = ["tests"]`.
@@ -41,7 +43,7 @@ React 18 + Vite + TypeScript (strict), TanStack Query, TanStack Table, Recharts,
 - X axis = game date as a fractional year (`gameDateToYear`, 365-day years), one point per save. `Compare` has no source toggle: a metric listed in `/metrics` `history_metrics` is charted from `/history` (yearly, covers years before the first save), any other from `/series`.
 - Rank metrics (`RANK_METRICS` in `src/lib/format.ts`: `score_place`, `great_power_rank`; 1 = best, values up to ~2000) use `TimeSeriesChart rank`: reversed log Y axis with power-of-ten ticks, values <= 0 dropped, legend sorted ascending. `LOWER_IS_BETTER` is broader (also inflation, war exhaustion) and only affects delta colours and sort direction.
 - Read-only public build (`VITE_READONLY=1`, `src/lib/mode.ts`): `get()` reads static files via `staticPath()` in `src/api/client.ts` instead of `/api`, writes are rejected and management UI/routes are hidden. The files come from `backend/tools/export_static.py` (`make public-build` / `make publish` to Cloudflare Pages). A new read endpoint used by the UI must be added to the exporter and to `staticPath` (+ its test).
-- Add a view: page in `src/pages/`, route in `App.tsx`, tab in `CampaignLayout` `TABS` if needed, data hook in `hooks.ts`. New metrics need a Spanish label in `METRIC_LABELS` (otherwise the API description is shown).
+- Add a view: page in `src/pages/`, route in `App.tsx`, tab in `CampaignLayout` `TABS` if needed, data hook in `hooks.ts`. New metrics need a Spanish label in `METRIC_LABELS` (`test_metrics_doc` fails otherwise).
 
 ## Architecture and data flow
 
@@ -99,8 +101,8 @@ query endpoints -> Store.series / country_timeline / latest_snapshots / session_
 
 ## Recipes
 
-- **Add a per-country metric**: append a `Metric(...)` to `METRICS` in `app/stats/metrics.py` (must return `float`). If it needs data outside the country record, add the section to `extract.py` (parse it via `_section` with a `select` as narrow as possible) and a field to `Context`. Existing campaigns need `POST /campaigns/{id}/reprocess`. Tests: `test_all_metrics_numeric` checks every metric is a float for every country; update `test_stats_api.py` only if `/metrics` expectations change.
-- **Add a history metric**: add `historical_<x>` → `<name>` to `HISTORY_FIELDS`; update the assertions in `tests/test_extract.py::test_history` and `tests/test_stats_api.py::test_campaign_endpoints` (they list the exact set).
+- **Add a per-country metric**: append a `Metric(...)` to `METRICS` in `app/stats/metrics.py` (must return `float`). If it needs data outside the country record, add the section to `extract.py` (parse it via `_section` with a `select` as narrow as possible) and a field to `Context`. Add its Spanish label (`METRIC_LABELS`, plus `LOWER_IS_BETTER`/`RANK_METRICS` if relevant) and run `make docs`. Existing campaigns need `POST /campaigns/{id}/reprocess`. Tests: `test_all_metrics_numeric` checks every metric is a float for every country; update `test_stats_api.py` only if `/metrics` expectations change.
+- **Add a history metric**: add `historical_<x>` → `<name>` to `HISTORY_FIELDS` and a description to `HISTORY_DESCRIPTIONS` in `tools/metrics_doc.py`, then `make docs`; update the exact list asserted in `tests/test_stats_api.py::test_campaign_endpoints`.
 - **New/unknown value token** (decode fails with `Unknown EU5 value token 0x0dXX`): add the constant to `lexer.py` (`KNOWN`, and `iter_tokens`), its payload size to `_build_size_table`, its decoding to `parser.scalar()`, its type name to `tools/token_stats.TYPE_NAMES`, and a synthetic test in `tests/test_units.py`.
 - **Name native tokens**: add `<id> <name>` lines to `tokens/eu5.txt`. Tests deliberately use an empty `TokenTable()` so keys stay `"0xNNNN"`; do not make tests depend on the file's contents.
 - **Add an endpoint**: add it to `app/stats/api.py` (or `main.py` for decoder-level endpoints), put the SQL in a `Store` method, raise `NotFound`/`Conflict` for 404/409, and extend `tests/test_stats_api.py` (real save) or `tests/test_stats_db.py` (synthetic `SaveStats`).
@@ -110,8 +112,9 @@ query endpoints -> Store.series / country_timeline / latest_snapshots / session_
 
 - `tests/test_units.py` – synthetic token streams (helpers `tok`, `key`, `i32`, `run`); fast, no files needed. Preferred place for decoder logic tests.
 - `tests/test_stats_db.py` – `Store` queries with synthetic `SaveStats` (helper `stats(year, {name: (tag, metrics)})`).
-- `tests/test_saves.py` – parametrised over every `*.eu5` in the repo root and `tests/fixtures` (`save_path` fixture), plus checks on `test_save.eu5`.
-- `tests/test_extract.py`, `tests/test_stats_api.py` – use `tests/fixtures/test_save.eu5` (14-player MP save at 1367.1.5, version 1.4.7; e.g. player "Miranda" = ENG, 157 locations). They assert exact values from that save.
+- `tests/test_saves.py` – parametrised over every `*.eu5` in `backend/` and `backend/tests/fixtures` (`save_path` fixture), plus checks on `test_save.eu5`. Only format invariants.
+- `tests/test_metrics_doc.py` – `docs/metrics.md` matches `METRICS` + frontend labels; skips if `docs/`/`frontend/src` are not mounted.
+- `tests/test_extract.py`, `tests/test_stats_api.py` – use `tests/fixtures/test_save.eu5`, which can be **any** MP save (≥ 2 human countries). Never hardcode values from it: use the `conftest.py` fixtures `mp_facts` (independent low-level reading: players, tags, metadata strings, header), `mp_stats` (extraction output, the reference for API tests), `mp_played`/`mp_ref` (played countries by tag) and `mp_ai` (an AI country present in the save).
 - `*.eu5` is git-ignored, so the fixture is **not versioned**: on a machine without it, `mp_save_bytes` tests skip and `save_path` tests have no parameters. Real saves are 25–40 MB; full-decode tests are slow.
 - API tests use `create_app(tmp_path, start_worker=False)` and drive processing with `app.state.ingestor.process_pending()`.
 - `test_full_decode` asserts every unresolved token count is even (metadata is repeated at the start of the gamestate) and `test_container` asserts header `(version, save_type) == (3, 3)`.
@@ -119,7 +122,9 @@ query endpoints -> Store.series / country_timeline / latest_snapshots / session_
 ## Gotchas
 
 - `data/` (DB + uploads) is git-ignored and bind-mounted; it may contain real user data – don't delete it without asking.
-- `tests/test_saves.py`'s docstring mentions `./saves`, but `conftest.py` only scans the repo root and `tests/fixtures`; `make token-stats` scans `.`, `saves/` and `tests/fixtures`.
+- `make token-stats` scans `.`, `saves/` and `tests/fixtures` relative to `backend/`; `conftest.py` only scans `backend/` and `backend/tests/fixtures`.
+- The `api` container mounts only `./backend` at `/app`, plus `./docs` at `/docs` and `./frontend/src` at `/frontend/src` (read-only) for `tools/metrics_doc.py`; container paths are relative to `backend/`.
+- There is no campaign-wide reprocess button in the UI (`useReprocessCampaign` is unused); only per-save reprocess in `SessionDetail`.
 - `app/main.py` builds `app = create_app()` at import time, so importing it (e.g. `tests/test_stats_api.py`) opens `data/eu5stats.db` unless `EU5_DATA_DIR` points elsewhere.
 - Reprocessing uses the *current* tracked list: a removed country loses its rows in reprocessed saves.
 - Deleting a campaign is refused (409) while it has sessions.

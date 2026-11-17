@@ -12,7 +12,7 @@ WRANGLER := wrangler@3.99.0
 -include .env
 export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
 
-.PHONY: help build up down logs backend-logs web-logs test shell db-shell decode token-stats campaign session \
+.PHONY: help build up down logs backend-logs web-logs test shell db-shell decode token-stats docs campaign session \
 	reprocess web-shell web-lint web-test web-build web-prod-up public-build public-preview public-preview-stop publish
 
 help: ## List available targets
@@ -52,6 +52,9 @@ decode: ## Decode a save via the running API: make decode SAVE=file.eu5 [PARAMS=
 
 token-stats: ## Show unresolved native tokens across all saves
 	$(COMPOSE) run --rm api python -m tools.token_stats . saves tests/fixtures $(ARGS)
+
+docs: ## Regenerate docs/metrics.md from the metric catalogue and the frontend labels
+	$(COMPOSE) run --rm --no-deps api python -m tools.metrics_doc
 
 campaign: ## Create a campaign: make campaign NAME="My campaign" [DESC="..."]
 	@test -n "$(NAME)" || (echo 'Usage: make campaign NAME="..."'; exit 1)
