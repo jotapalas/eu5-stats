@@ -7,8 +7,10 @@ import {
   useCountries,
   useDeleteCampaign,
   useRemoveCountry,
+  useSetCountryPlayer,
   useUpdateCampaign,
 } from "../api/hooks";
+import type { TrackedCountry } from "../api/types";
 import { ErrorBox, PageTitle, Spinner } from "../components/ui";
 import { useCampaignCtx } from "./CampaignLayout";
 
@@ -26,6 +28,7 @@ function TrackedCountries() {
   const { data, error, isLoading } = useCountries(id);
   const add = useAddCountry(id);
   const remove = useRemoveCountry(id);
+  const setPlayer = useSetCountryPlayer(id);
   const [tag, setTag] = useState("");
 
   const submit = (e: FormEvent) => {
@@ -40,6 +43,10 @@ function TrackedCountries() {
         Los países de los jugadores se añaden solos. Añade aquí países de la IA que quieras seguir; los cambios se aplican
         a los saves que se procesen a partir de ahora (usa «Reprocesar» para las ya subidas). Quitar un país conserva sus datos.
       </p>
+      <p className="mb-3 text-sm muted">
+        «Jugador principal» es el nombre que aparece en el ranking, la comparativa y la ficha de país. Si lo dejas vacío
+        se usa el del último save. Las sesiones siempre muestran el jugador que indica cada save.
+      </p>
       <form onSubmit={submit} className="mb-3 flex gap-2">
         <input
           className="input w-32 uppercase"
@@ -51,7 +58,7 @@ function TrackedCountries() {
         />
         <button className="btn btn-primary" disabled={!tag.trim() || add.isPending}>Añadir</button>
       </form>
-      <ErrorBox error={add.error ?? remove.error ?? error} />
+      <ErrorBox error={add.error ?? remove.error ?? setPlayer.error ?? error} />
       {isLoading && <Spinner />}
       {data && (
         <div className="overflow-x-auto">
@@ -61,7 +68,8 @@ function TrackedCountries() {
                 <th>Tag</th>
                 <th>Añadido como</th>
                 <th>Tags</th>
-                <th>Jugadores</th>
+                <th>Jugador principal</th>
+                <th>Jugadores en los saves</th>
                 <th className="num">Saves</th>
                 <th>Último dato</th>
                 <th />
@@ -73,6 +81,9 @@ function TrackedCountries() {
                   <td className="font-medium">{c.tag}</td>
                   <td>{c.added_as}</td>
                   <td>{c.tags.join(" → ") || "–"}</td>
+                  <td>
+                    <PlayerInput country={c} onSave={(player) => setPlayer.mutate({ tag: c.tag, player })} />
+                  </td>
                   <td>{c.players.join(", ") || "IA"}</td>
                   <td className="num">{c.snapshots}</td>
                   <td>{c.last_date ?? (c.country_id === null ? "pendiente de resolver" : "–")}</td>
@@ -90,6 +101,36 @@ function TrackedCountries() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Inline editor: saves on Enter or blur when changed; suggests the names seen in the saves. */
+function PlayerInput({ country, onSave }: { country: TrackedCountry; onSave: (player: string | null) => void }) {
+  const [value, setValue] = useState(country.player ?? "");
+  const listId = `players-${country.added_as}-${country.country_id}`;
+  const commit = () => {
+    const next = value.trim() || null;
+    if (next !== country.player) onSave(next);
+  };
+  return (
+    <>
+      <input
+        className="input w-40 py-1"
+        value={value}
+        placeholder={country.players[country.players.length - 1] ?? "IA"}
+        list={listId}
+        maxLength={100}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        aria-label={`Jugador principal de ${country.tag}`}
+      />
+      <datalist id={listId}>
+        {country.players.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
+    </>
   );
 }
 

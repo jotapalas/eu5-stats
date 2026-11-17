@@ -22,7 +22,7 @@ type Row = Snapshot & { label: string };
 const col = createColumnHelper<Row>();
 
 export function Overview() {
-  const { campaign, color, id } = useCampaignCtx();
+  const { campaign, color, id, players } = useCampaignCtx();
   const { data: metrics } = useMetrics();
   const navigate = useNavigate();
   const [category, setCategory] = useState("all");
@@ -33,8 +33,8 @@ export function Overview() {
     () =>
       Object.entries(campaign.latest)
         .map(([label, s]) => ({ ...s, label }))
-        .filter((r) => !onlyPlayers || r.players.length),
-    [campaign.latest, onlyPlayers],
+        .filter((r) => !onlyPlayers || players(r.label).length),
+    [campaign.latest, onlyPlayers, players],
   );
 
   const columns = useMemo(() => {
@@ -46,7 +46,7 @@ export function Overview() {
           <span className="flex items-center gap-2">
             <Swatch style={color(c.getValue())} />
             <span className="font-medium">{c.getValue()}</span>
-            <span className="max-w-[16rem] truncate muted">{c.row.original.players.join(", ") || "IA"}</span>
+            <span className="max-w-[16rem] truncate muted">{players(c.getValue()).join(", ") || "IA"}</span>
           </span>
         ),
       }),
@@ -61,7 +61,7 @@ export function Overview() {
         }),
       ),
     ];
-  }, [metrics, color]);
+  }, [metrics, color, players]);
 
   const columnVisibility = useMemo(
     () => Object.fromEntries((metrics?.metrics ?? []).map((m) => [m.name, category === "all" || m.category === category])),

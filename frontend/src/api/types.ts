@@ -15,6 +15,8 @@ export interface Campaign {
   first_date: string | null;
   last_date: string | null;
   countries: string[];
+  /** Main player per country (set in the tracked list), keyed by display tag; only those set. */
+  main_players: Record<string, string>;
 }
 
 export interface Snapshot {
@@ -74,6 +76,8 @@ export interface TrackedCountry {
   added_as: string;
   country_id: number | null;
   active: boolean;
+  /** Main player shown campaign-wide; null: the players from the saves. */
+  player: string | null;
   added_at: string;
   tags: string[];
   players: string[];
@@ -140,4 +144,6 @@ export interface SessionSummary {
   first_date: string | null;
   last_date: string | null;
   countries: Record<string, Record<string, MetricDelta>>;
+  /** Players as written in this session's saves. */
+  players: Record<string, string[]>;
 }

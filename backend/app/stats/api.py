@@ -36,6 +36,10 @@ class CountryIn(BaseModel):
     tag: str = Field(min_length=1, max_length=8, pattern=r"^[A-Za-z0-9_]+$")
 
 
+class CountryPatch(BaseModel):
+    player: str | None = Field(default=None, max_length=100, description="Main player; empty/null: from saves")
+
+
 # ---------------------------------------------------------------------- metrics
 @router.get("/metrics", tags=["stats"])
 def list_metrics() -> dict:
@@ -84,6 +88,12 @@ def list_countries(campaign_id: int, request: Request) -> list[dict]:
 def add_country(campaign_id: int, body: CountryIn, request: Request) -> dict:
     """Track a country in saves processed from now on (use /reprocess for existing saves)."""
     return _store(request).add_country(campaign_id, body.tag.upper())
+
+
+@router.patch("/campaigns/{campaign_id}/countries/{tag}", tags=["countries"])
+def update_country(campaign_id: int, tag: str, body: CountryPatch, request: Request) -> dict:
+    """Set the main player shown for the country in campaign-wide views (sessions keep the saves' names)."""
+    return _store(request).set_country_player(campaign_id, tag.upper(), body.player)
 
 
 @router.delete("/campaigns/{campaign_id}/countries/{tag}", status_code=204, tags=["countries"])

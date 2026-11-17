@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS campaign_countries (
     tag         TEXT NOT NULL,      -- tag the country was added with
     country_id  INTEGER,            -- NULL until a processed save resolves the tag
     active      INTEGER NOT NULL DEFAULT 1,
+    player      TEXT,               -- main player shown in campaign-wide views (NULL: from saves)
     added_at    TEXT NOT NULL,
     UNIQUE (campaign_id, country_id)
 );
@@ -162,8 +163,10 @@ class Store:
             raise NotFound(f"Campaign {campaign_id} not found")
         out = dict(row)
         current = self._current_tags(db, campaign_id)
-        out["countries"] = sorted(
-            current.get(e["country_id"], e["tag"]) for e in self._entries(db, campaign_id) if e["active"])
+        entries = self._entries(db, campaign_id)
+        out["countries"] = sorted(current.get(e["country_id"], e["tag"]) for e in entries if e["active"])
+        # Main player per country (edited in the tracked list), keyed by display tag; only those set.
+        out["main_players"] = {current.get(e["country_id"], e["tag"]): e["player"] for e in entries if e["player"]}
         return out
 
     def get_campaign(self, campaign_id: int) -> dict:
@@ -268,6 +271,7 @@ class Store:
                     "added_as": e["tag"],
                     "country_id": e["country_id"],
                     "active": bool(e["active"]),
+                    "player": e["player"],
                     "added_at": e["added_at"],
                     "tags": info.get("tags", []),
                     "players": info.get("players", []),
@@ -291,6 +295,18 @@ class Store:
                     (campaign_id, tag, self._country_id(db, campaign_id, tag), now()))
         return next(c for c in self.list_countries(campaign_id)
                     if tag in (c["tag"], c["added_as"]) or tag in c["tags"])
+
+    def set_country_player(self, campaign_id: int, tag: str, player: str | None) -> dict:
+        """Set the main player shown for a country in campaign-wide views (None: use the saves' players)."""
+        player = (player or "").strip() or None
+        with self.connect() as db:
+            self._campaign(db, campaign_id)
+            entry = self._entry_for(db, campaign_id, tag)
+            if entry is None:
+                raise NotFound(f"Country {tag} is not tracked in campaign {campaign_id}")
+            db.execute("UPDATE campaign_countries SET player = ? WHERE id = ?", (player, entry["id"]))
+            key = (entry["tag"], entry["country_id"])
+        return next(c for c in self.list_countries(campaign_id) if (c["added_as"], c["country_id"]) == key)
 
     def remove_country(self, campaign_id: int, tag: str) -> None:
         """Stop tracking a country in saves processed from now on; extracted data is kept."""
@@ -569,7 +585,7 @@ class Store:
                 "SELECT id, game_date, game_hours FROM saves WHERE session_id = ? AND status = 'done' "
                 "ORDER BY game_hours, id", (session_id,)).fetchall()
             out = {"session_id": session_id, "campaign_id": session["campaign_id"],
-                   "first_date": None, "last_date": None, "countries": {}}
+                   "first_date": None, "last_date": None, "countries": {}, "players": {}}
             if not saves:
                 return out
             first, last = saves[0], saves[-1]
@@ -592,6 +608,13 @@ class Store:
                     for m in sorted(set(s) | set(e))
                 }
             out["countries"] = dict(sorted(out["countries"].items()))
+            # Players as written in this session's saves (not the campaign's main player).
+            for r in db.execute(
+                "SELECT cs.country_id, cs.players FROM country_snapshots cs JOIN saves s ON s.id = cs.save_id "
+                "WHERE s.session_id = ? AND s.status = 'done' ORDER BY s.game_hours, s.id", (session_id,)):
+                names = out["players"].setdefault(label(r["country_id"]), [])
+                names.extend(p for p in json.loads(r["players"]) if p not in names)
+            out["players"] = dict(sorted(out["players"].items()))
             return out
 
     def history(self, campaign_id: int, metric: str) -> dict:

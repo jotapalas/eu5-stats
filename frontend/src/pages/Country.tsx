@@ -14,7 +14,7 @@ const TONE = { good: "text-emerald-700 dark:text-emerald-400", bad: "text-red-70
 
 export function Country() {
   const tag = (useParams().tag ?? "").toUpperCase();
-  const { id, color } = useCampaignCtx();
+  const { id, color, players: mainPlayers } = useCampaignCtx();
   const { data, error, isLoading } = useCountry(id, tag);
   const { data: metrics } = useMetrics();
 
@@ -47,11 +47,14 @@ export function Country() {
         <span className="flex items-center gap-2">
           <Swatch style={style} />
           {data.tag}
-          <span className="text-sm font-normal muted">{info.players.join(", ") || "IA"}</span>
+          <span className="text-sm font-normal muted">{mainPlayers(data.tag).join(", ") || "IA"}</span>
         </span>
       </PageTitle>
       <div className="mb-5 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span><span className="muted">Datos:</span> {info.first?.date} → {info.last?.date} ({data.timeline.length} saves)</span>
+        {info.players.length > 0 && (
+          <span><span className="muted">Jugadores en los saves:</span> {info.players.join(", ")}</span>
+        )}
         {info.tags.length > 1 && (
           <span>
             <span className="muted">Tags:</span> {info.tags.map((t) => `${t.tag} (desde ${t.from})`).join(" → ")}

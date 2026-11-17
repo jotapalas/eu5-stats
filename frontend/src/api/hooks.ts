@@ -141,6 +141,16 @@ export function useRemoveCountry(id: number) {
   });
 }
 
+/** Main player shown campaign-wide for a country; null/empty goes back to the saves' players. */
+export function useSetCountryPlayer(id: number) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ tag, player }: { tag: string; player: string | null }) =>
+      patch<TrackedCountry>(`/campaigns/${id}/countries/${encodeURIComponent(tag)}`, { player }),
+    onSuccess: () => invalidate(keys.campaign(id)),
+  });
+}
+
 export interface NewSession {
   files: File[];
   name?: string;

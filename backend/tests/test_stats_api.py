@@ -102,6 +102,14 @@ def test_full_flow(client, app, mp_save_bytes):
     assert not countries["SWE"]["active"]
     assert "SWE" not in client.get(f"/campaigns/{cid}").json()["latest"]
 
+    # Main player: shown campaign-wide, while snapshots keep the save's name.
+    r = client.patch(f"/campaigns/{cid}/countries/eng", json={"player": "Mira"})
+    assert r.status_code == 200 and r.json()["player"] == "Mira"
+    camp = client.get(f"/campaigns/{cid}").json()
+    assert camp["main_players"] == {"ENG": "Mira"} and camp["latest"]["ENG"]["players"] == ["Miranda"]
+    assert client.patch(f"/campaigns/{cid}/countries/ENG", json={"player": None}).json()["player"] is None
+    assert client.patch(f"/campaigns/{cid}/countries/XXX", json={"player": "x"}).status_code == 404
+
     # Same file in another campaign is processed independently; the stored file is shared.
     cid2 = client.post("/campaigns", json={"name": "Other"}).json()["id"]
     r = upload(client, cid2, [("1367.eu5", mp_save_bytes)])

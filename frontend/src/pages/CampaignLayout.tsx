@@ -12,7 +12,7 @@ export interface CampaignCtx {
   campaign: CampaignDetail;
   id: number;
   color: ColorScale;
-  /** Players of a country in its latest snapshot ([] for AI). */
+  /** Players shown for a country: its main player if set, else those of its latest snapshot ([] for AI). */
   players: (tag: string) => string[];
   /** Every country with data, sorted. */
   tags: string[];
@@ -52,7 +52,7 @@ export function CampaignLayout() {
       id,
       tags,
       color: colorScale(tags, dark),
-      players: (tag) => campaign.latest[tag]?.players ?? [],
+      players: (tag) => (campaign.main_players[tag] ? [campaign.main_players[tag]] : campaign.latest[tag]?.players ?? []),
     };
   }, [campaign, id, dark]);
 

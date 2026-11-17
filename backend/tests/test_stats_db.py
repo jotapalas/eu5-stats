@@ -132,6 +132,31 @@ def test_add_country_by_current_or_past_tag(store):
     assert store.tracked_countries(cid) == [("ENG", 1)]
 
 
+def test_main_player(store):
+    cid = store.create_campaign("C", None)["id"]
+    s1 = store.create_session(cid, None, None, None)
+    add(store, s1, "a", stats(1337, {"ENG": (["Ana"], {"gold": 1}), "FRA": (["Bo"], {"gold": 1})}))
+    s2 = store.create_session(cid, None, None, None)
+    # A substitute plays England for one session, and England becomes Great Britain.
+    add(store, s2, "b", stats(1338, {"GBR": (["Sub"], {"gold": 2}), "FRA": (["Bo"], {"gold": 1})}))
+    assert store.get_campaign(cid)["main_players"] == {}
+
+    # Set by a past tag; labelled by the current one.
+    assert store.set_country_player(cid, "ENG", "  Ana ")["player"] == "Ana"
+    assert store.get_campaign(cid)["main_players"] == {"GBR": "Ana"}
+    assert next(c for c in store.list_countries(cid) if c["tag"] == "GBR")["player"] == "Ana"
+    # Saves keep their own names: snapshots and session summaries are untouched.
+    assert store.latest_snapshots(cid)["GBR"]["players"] == ["Sub"]
+    assert store.session_summary(s2)["players"] == {"FRA": ["Bo"], "GBR": ["Sub"]}
+    assert store.session_summary(s1)["players"] == {"FRA": ["Bo"], "GBR": ["Ana"]}
+
+    # Empty clears it; unknown countries are 404.
+    assert store.set_country_player(cid, "GBR", "")["player"] is None
+    assert store.get_campaign(cid)["main_players"] == {}
+    with pytest.raises(NotFound):
+        store.set_country_player(cid, "XXX", "Ana")
+
+
 def test_history_latest_save_wins(store):
     cid = store.create_campaign("C", None)["id"]
     sid = store.create_session(cid, None, None, None)

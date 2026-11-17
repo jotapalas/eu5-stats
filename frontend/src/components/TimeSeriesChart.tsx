@@ -37,14 +37,19 @@ interface Props {
    * from the ~2000 tail. Values <= 0 (no rank; Paradox writes 0) are dropped.
    */
   rank?: boolean;
+  /** Render the built-in legend below the chart (off when the page shows its own country list). */
+  legend?: boolean;
+  /** Series to highlight, controlled from outside (e.g. hovering a row of an external list). */
+  highlight?: string | null;
 }
 
-export function TimeSeriesChart({ series: input, height = 380, compact = false, rank = false,
-                                  xTick = (x) => String(Math.floor(x)) }: Props) {
+export function TimeSeriesChart({ series: input, height = 380, compact = false, rank = false, legend: showLegend = true,
+                                  highlight = null, xTick = (x) => String(Math.floor(x)) }: Props) {
   const dark = useDarkMode();
   const chrome = chartChrome(dark);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [hover, setHover] = useState<string | null>(null);
+  const [hoverInner, setHover] = useState<string | null>(null);
+  const hover = highlight ?? hoverInner;
   const [asTable, setAsTable] = useState(false);
 
   const series = useMemo(
@@ -204,7 +209,7 @@ export function TimeSeriesChart({ series: input, height = 380, compact = false, 
           </LineChart>
         </ResponsiveContainer>
       )}
-      {!compact && series.length > 1 && (
+      {showLegend && !compact && series.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-1.5" onMouseLeave={() => setHover(null)}>
           {legend.map((s) => {
             const off = hidden.has(s.key);

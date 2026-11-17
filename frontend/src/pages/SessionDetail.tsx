@@ -133,7 +133,7 @@ function Summary({ sid }: { sid: number }) {
                 <td>
                   <span className="flex items-center gap-2">
                     <Swatch style={color(r.tag)} />
-                    {countryLabel(r.tag, players(r.tag))}
+                    {countryLabel(r.tag, data.players?.[r.tag] ?? players(r.tag))}
                   </span>
                 </td>
                 <td className="num">{formatValue(r.start)}</td>
