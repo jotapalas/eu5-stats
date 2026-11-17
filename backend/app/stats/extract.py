@@ -20,6 +20,9 @@ the war lasts that land still counts for the government (CIVIL_WAR_METRICS). Pro
 objects (`provinces.database[id].province_definition`) and a faction may hold part of a province, so the
 province count is the union of definitions. Independence wars are not treated this way: a rebelling
 subject is no longer a subject, and that loss is real.
+
+Colour: each country record has `color = rgb { r g b }` (parsed as `{"rgb": [r, g, b]}`), the map colour of its
+current tag (it changes with the tag, e.g. HOL -> NEL). Stored per snapshot as "#rrggbb".
 """
 from __future__ import annotations
 
@@ -60,6 +63,7 @@ class CountryStats:
     tag: str | None
     players: list[str]  # human players controlling the country in this save (empty: AI)
     metrics: dict[str, float]
+    color: str | None = None  # map colour in the game, "#rrggbb"
 
 
 @dataclass
@@ -78,6 +82,17 @@ def _section(mv, idx, key, strings, tokens, select=None):
         return None
     s, e = ranges[0]
     return parse(mv[s:e], strings, tokens, select={key: select if select is not None else True})[key]
+
+
+def _color(rec: dict | None) -> str | None:
+    """`color = rgb { r g b }` -> "#rrggbb"; None for any other shape."""
+    c = rec.get("color") if isinstance(rec, dict) else None
+    rgb = c.get("rgb") if isinstance(c, dict) else None
+    if not isinstance(rgb, list) or len(rgb) != 3:
+        return None
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 255 for v in rgb):
+        return None
+    return "#" + "".join(f"{round(v):02x}" for v in rgb)
 
 
 def _dependencies(deps) -> dict[int, list[tuple[int, str]]]:
@@ -245,5 +260,5 @@ def extract(data: bytes, tokens: TokenTable | None = None,
             for name in VASSAL_METRICS:
                 metrics[vassal_metric(name, scope)] = metrics[name] + sum(
                     subject_metrics(s).get(name, 0.0) for s in vassals)
-        stats.countries.append(CountryStats(cid, tag, players.get(cid, []), metrics))
+        stats.countries.append(CountryStats(cid, tag, players.get(cid, []), metrics, _color(record(cid))))
     return stats

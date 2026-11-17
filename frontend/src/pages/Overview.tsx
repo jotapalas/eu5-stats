@@ -111,10 +111,6 @@ export function Overview() {
           onChange={setCategory}
           options={[{ value: "all", label: "Todas" }, ...categories.map((c) => ({ value: c, label: categoryLabel(c) }))]}
         />
-        <label className="flex items-center gap-1.5 text-sm">
-          <input type="checkbox" checked={onlyPlayers} onChange={(e) => setOnlyPlayers(e.target.checked)} />
-          Sólo jugadores
-        </label>
         <VassalScopePicker value={scope} onChange={setScope} />
         <span className="text-xs muted">Último dato de cada país · clic en una fila para ver su ficha</span>
       </div>

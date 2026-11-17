@@ -17,6 +17,15 @@ export interface Campaign {
   countries: string[];
   /** Main player per country (set in the tracked list), keyed by display tag; only those set. */
   main_players: Record<string, string>;
+  /** Chart colours per active country, keyed by display tag. */
+  colors: Record<string, CountryColors>;
+}
+
+/** "#rrggbb" colours: the game's (latest save) and the per-theme overrides set in Settings (null: game colour). */
+export interface CountryColors {
+  game: string | null;
+  light: string | null;
+  dark: string | null;
 }
 
 export interface Snapshot {
@@ -74,6 +83,11 @@ export interface TrackedCountry {
   active: boolean;
   /** Main player shown campaign-wide; null: the players from the saves. */
   player: string | null;
+  /** Map colour in the latest save, "#rrggbb" (null: not processed yet). */
+  color: string | null;
+  /** Chart colour overrides per theme (null: game colour). */
+  color_light: string | null;
+  color_dark: string | null;
   added_at: string;
   tags: string[];
   players: string[];

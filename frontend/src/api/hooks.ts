@@ -133,11 +133,14 @@ export function useRemoveCountry(id: number) {
 }
 
 /** Main player shown campaign-wide for a country; null/empty goes back to the saves' players. */
-export function useSetCountryPlayer(id: number) {
+/** Fields of a tracked country editable with PATCH; only those sent change (null clears). */
+export type CountryPatch = Partial<Pick<TrackedCountry, "player" | "color_light" | "color_dark">>;
+
+export function useUpdateCountry(id: number) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ tag, player }: { tag: string; player: string | null }) =>
-      patch<TrackedCountry>(`/campaigns/${id}/countries/${encodeURIComponent(tag)}`, { player }),
+    mutationFn: ({ tag, ...body }: { tag: string } & CountryPatch) =>
+      patch<TrackedCountry>(`/campaigns/${id}/countries/${encodeURIComponent(tag)}`, body),
     onSuccess: () => invalidate(keys.campaign(id)),
   });
 }

@@ -123,6 +123,16 @@ def test_full_flow(client, app, mp_save_bytes, mp_stats, mp_played, mp_ai):
     assert client.patch(f"/campaigns/{cid}/countries/{tag}", json={"player": None}).json()["player"] is None
     assert client.patch(f"/campaigns/{cid}/countries/XXX", json={"player": "x"}).status_code == 404
 
+    # Chart colours: the game's from the save, overrides per theme that leave the player alone.
+    client.patch(f"/campaigns/{cid}/countries/{tag}", json={"player": "Main"})
+    game_color = next(c.color for c in mp_stats.countries if c.country_id == ref.country_id)
+    assert camp["colors"][tag] == {"game": game_color, "light": None, "dark": None}
+    r = client.patch(f"/campaigns/{cid}/countries/{tag}", json={"color_light": "#000000"})
+    assert r.status_code == 200 and (r.json()["color_light"], r.json()["player"]) == ("#000000", "Main")
+    assert client.get(f"/campaigns/{cid}").json()["colors"][tag]["light"] == "#000000"
+    assert client.patch(f"/campaigns/{cid}/countries/{tag}", json={"color_dark": "white"}).status_code == 422
+    assert client.patch(f"/campaigns/{cid}/countries/{tag}", json={"color_light": None}).json()["color_light"] is None
+
     # Same file in another campaign is processed independently; the stored file is shared.
     cid2 = client.post("/campaigns", json={"name": "Other"}).json()["id"]
     r = upload(client, cid2, [("save.eu5", mp_save_bytes)])

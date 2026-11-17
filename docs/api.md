@@ -21,7 +21,7 @@ All responses are JSON. Errors use `{"detail": "..."}` with 404 (not found), 409
 | DELETE | `/campaigns/{id}` | Delete (409 while it has sessions) |
 | GET | `/campaigns/{id}/countries` | Tracked countries (active and removed) with past tags and players |
 | POST | `/campaigns/{id}/countries` | Track a country `{tag}` (409 if already tracked) |
-| PATCH | `/campaigns/{id}/countries/{tag}` | Set the main player `{player}` (null/empty: use names from saves) |
+| PATCH | `/campaigns/{id}/countries/{tag}` | Edit a tracked country; only fields sent change: main player `player` (null/empty: names from saves), chart colours `color_light` / `color_dark` (`#rrggbb`; null/empty: game colour) |
 | DELETE | `/campaigns/{id}/countries/{tag}` | Stop tracking a country (data is kept) |
 | GET | `/campaigns/{id}/countries/{tag}` | All metrics, tag and players of a country over time |
 | POST | `/campaigns/{id}/reprocess` | Re-extract every save of the campaign → `{queued}` |
@@ -77,6 +77,7 @@ has the full TypeScript types.
   "sessions": 1, "saves": 1, "saves_done": 1, "saves_pending": 0, "saves_error": 0,
   "first_date": "1367.1.1", "last_date": "1367.1.1",
   "countries": ["CAS", "ENG", "FRA", "..."], "main_players": {},
+  "colors": {"ENG": {"game": "#c8102e", "light": null, "dark": null}, "...": "..."},
   "latest": {
     "ENG": {"date": "1367.1.1", "tag": "ENG", "country_id": 289, "players": ["Miranda"],
             "metrics": {"gold": 295.30505, "advances": 87.0, "...": "..."}}
@@ -104,6 +105,7 @@ has the full TypeScript types.
 
 ```json
 [{"tag": "ENG", "added_as": "ENG", "country_id": 289, "active": true, "player": null,
+  "color": "#c8102e", "color_light": null, "color_dark": null,
   "added_at": "...", "tags": ["ENG"], "players": ["Miranda"], "snapshots": 1, "last_date": "1367.1.1"}]
 ```
 

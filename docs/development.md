@@ -114,5 +114,6 @@ explicit `ALTER TABLE` in `Store.__init__` or document that `data/eu5stats.db` m
 - Modern typing (`dict[str, int]`, `X | None`), `@dataclass` records, UPPER_CASE module constants.
 - Raw SQL with named or `?` parameters. Use f-strings only for trusted fragments like `EFFECTIVE_SAVES`.
 - `parser.parse`, `skip_*` and `index_top_level` are micro-optimised. Keep that style.
-- Frontend colours: 8 fixed hues from `src/lib/colors.ts`. Never generate new ones.
+- Frontend colours: the game's country colours plus per-campaign overrides (`src/lib/colors.ts`). Clashes
+  are told apart by dash pattern, never by generating new hues.
 - Comments are terse and explain *why*. Lines up to ~110 chars.

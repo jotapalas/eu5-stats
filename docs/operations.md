@@ -64,6 +64,9 @@ Things to know:
   afterwards. Reprocess to apply them to existing saves.
 - **Main player**: when several people played a country, set the name to show in **Ajustes** (or with
   `PATCH /campaigns/{id}/countries/{tag}`).
+- **Chart colours**: countries use their in-game colour. If one is hard to see (white countries such as
+  HAB or PAP in light mode), pick another for light and/or dark mode in **Ajustes**. Reprocess the
+  campaign once after updating so older saves get their game colours.
 
 ### Reprocessing
 

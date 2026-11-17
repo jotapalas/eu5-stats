@@ -7,10 +7,14 @@ are labelled in query results by their *current* tag: the one in their latest pr
 `campaign_countries` is the editable list of countries a campaign tracks. Countries played by humans
 are added automatically when a save is processed; removing one only deactivates it, so data already
 extracted is kept and the country is no longer extracted from saves processed afterwards.
+
+Chart colours: each snapshot keeps the country's map colour in that save; a country shows the colour of its
+latest processed save (so it follows tag changes) unless the tracked list overrides it per theme.
 """
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -60,6 +64,8 @@ CREATE TABLE IF NOT EXISTS campaign_countries (
     country_id  INTEGER,            -- NULL until a processed save resolves the tag
     active      INTEGER NOT NULL DEFAULT 1,
     player      TEXT,               -- main player shown in campaign-wide views (NULL: from saves)
+    color_light TEXT,               -- chart colour override in light mode, "#rrggbb" (NULL: game colour)
+    color_dark  TEXT,               -- same in dark mode
     added_at    TEXT NOT NULL,
     UNIQUE (campaign_id, country_id)
 );
@@ -68,6 +74,7 @@ CREATE TABLE IF NOT EXISTS country_snapshots (
     country_id INTEGER NOT NULL,
     tag        TEXT,
     players    TEXT NOT NULL,  -- JSON list of player names (empty: AI)
+    color      TEXT,           -- the country's map colour in that save, "#rrggbb"
     PRIMARY KEY (save_id, country_id)
 );
 CREATE TABLE IF NOT EXISTS country_metrics (
@@ -91,6 +98,16 @@ WHERE s.campaign_id = :campaign AND s.status = 'done'
                 AND s2.game_hours = s.game_hours)
 """
 
+# Columns added after the first release: databases created earlier get them via ALTER TABLE.
+ADDED_COLUMNS = {
+    "country_snapshots": {"color": "TEXT"},
+    "campaign_countries": {"color_light": "TEXT", "color_dark": "TEXT"},
+}
+
+HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
+# Fields of a tracked country editable with update_country.
+COUNTRY_FIELDS = ("player", "color_light", "color_dark")
+
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -110,6 +127,11 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(SCHEMA)
+            for table, columns in ADDED_COLUMNS.items():
+                have = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
+                for name, kind in columns.items():
+                    if name not in have:
+                        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -155,11 +177,17 @@ class Store:
         if row is None:
             raise NotFound(f"Campaign {campaign_id} not found")
         out = dict(row)
-        current = self._current_tags(db, campaign_id)
+        current, colors = self._current(db, campaign_id)
         entries = self._entries(db, campaign_id)
         out["countries"] = sorted(current.get(e["country_id"], e["tag"]) for e in entries if e["active"])
         # Main player per country (edited in the tracked list), keyed by display tag; only those set.
         out["main_players"] = {current.get(e["country_id"], e["tag"]): e["player"] for e in entries if e["player"]}
+        # Chart colours per active country: the game's (latest save) and the per-mode overrides.
+        out["colors"] = {
+            current.get(e["country_id"], e["tag"]): {
+                "game": colors.get(e["country_id"]), "light": e["color_light"], "dark": e["color_dark"]}
+            for e in entries if e["active"]
+        }
         return out
 
     def get_campaign(self, campaign_id: int) -> dict:
@@ -197,15 +225,23 @@ class Store:
                           (campaign_id,)).fetchall()
 
     @staticmethod
-    def _current_tags(db, campaign_id: int) -> dict[int, str]:
-        """country_id -> tag in its latest processed save of the campaign."""
-        out: dict[int, str] = {}
+    def _current(db, campaign_id: int) -> tuple[dict[int, str], dict[int, str]]:
+        """country_id -> tag, and country_id -> game colour, in its latest processed save of the campaign."""
+        tags: dict[int, str] = {}
+        colors: dict[int, str] = {}
         for r in db.execute(
-            """SELECT cs.country_id, cs.tag FROM country_snapshots cs JOIN saves s ON s.id = cs.save_id
-               WHERE s.campaign_id = ? AND s.status = 'done' AND cs.tag IS NOT NULL
+            """SELECT cs.country_id, cs.tag, cs.color FROM country_snapshots cs JOIN saves s ON s.id = cs.save_id
+               WHERE s.campaign_id = ? AND s.status = 'done'
                ORDER BY s.game_hours, s.id""", (campaign_id,)):
-            out[r["country_id"]] = r["tag"]
-        return out
+            if r["tag"] is not None:
+                tags[r["country_id"]] = r["tag"]
+            if r["color"] is not None:
+                colors[r["country_id"]] = r["color"]
+        return tags, colors
+
+    def _current_tags(self, db, campaign_id: int) -> dict[int, str]:
+        """country_id -> tag in its latest processed save of the campaign."""
+        return self._current(db, campaign_id)[0]
 
     def _label(self, db, campaign_id: int):
         """Function country_id -> display tag (current tag, else the tag it was added with)."""
@@ -242,7 +278,7 @@ class Store:
     def list_countries(self, campaign_id: int) -> list[dict]:
         with self.connect() as db:
             self._campaign(db, campaign_id)
-            current = self._current_tags(db, campaign_id)
+            current, colors = self._current(db, campaign_id)
             seen: dict[int, dict] = {}
             for r in db.execute(
                 f"""SELECT cs.country_id, cs.tag, cs.players, s.game_date FROM ({EFFECTIVE_SAVES}) s
@@ -265,6 +301,9 @@ class Store:
                     "country_id": e["country_id"],
                     "active": bool(e["active"]),
                     "player": e["player"],
+                    "color": colors.get(e["country_id"]),
+                    "color_light": e["color_light"],
+                    "color_dark": e["color_dark"],
                     "added_at": e["added_at"],
                     "tags": info.get("tags", []),
                     "players": info.get("players", []),
@@ -289,17 +328,35 @@ class Store:
         return next(c for c in self.list_countries(campaign_id)
                     if tag in (c["tag"], c["added_as"]) or tag in c["tags"])
 
-    def set_country_player(self, campaign_id: int, tag: str, player: str | None) -> dict:
-        """Set the main player shown for a country in campaign-wide views (None: use the saves' players)."""
-        player = (player or "").strip() or None
+    def update_country(self, campaign_id: int, tag: str, fields: dict[str, str | None]) -> dict:
+        """Edit a tracked country; only the given COUNTRY_FIELDS change. Empty or None clears a field.
+
+        `player`: main player shown in campaign-wide views (None: the saves' players).
+        `color_light` / `color_dark`: chart colour override per theme, "#rrggbb" (None: the game's colour).
+        """
+        values: dict[str, str | None] = {}
+        for name, value in fields.items():
+            if name not in COUNTRY_FIELDS:
+                raise ValueError(f"Unknown country field {name!r}")
+            value = (value or "").strip() or None
+            if value is not None and name.startswith("color_"):
+                value = value.lower()
+                if not HEX_COLOR.match(value):
+                    raise ValueError(f"Invalid colour {value!r}, expected #rrggbb")
+            values[name] = value
         with self.connect() as db:
             self._campaign(db, campaign_id)
             entry = self._entry_for(db, campaign_id, tag)
             if entry is None:
                 raise NotFound(f"Country {tag} is not tracked in campaign {campaign_id}")
-            db.execute("UPDATE campaign_countries SET player = ? WHERE id = ?", (player, entry["id"]))
+            for name, value in values.items():  # names are whitelisted above
+                db.execute(f"UPDATE campaign_countries SET {name} = ? WHERE id = ?", (value, entry["id"]))
             key = (entry["tag"], entry["country_id"])
         return next(c for c in self.list_countries(campaign_id) if (c["added_as"], c["country_id"]) == key)
+
+    def set_country_player(self, campaign_id: int, tag: str, player: str | None) -> dict:
+        """Set the main player shown for a country in campaign-wide views (None: use the saves' players)."""
+        return self.update_country(campaign_id, tag, {"player": player})
 
     def remove_country(self, campaign_id: int, tag: str) -> None:
         """Stop tracking a country in saves processed from now on; extracted data is kept."""
@@ -475,8 +532,9 @@ class Store:
             for c in stats.countries:
                 if c.country_id not in active:  # played but removed from the campaign
                     continue
-                db.execute("INSERT INTO country_snapshots VALUES (?, ?, ?, ?)",
-                           (save_id, c.country_id, c.tag, json.dumps(c.players)))
+                db.execute("INSERT INTO country_snapshots(save_id, country_id, tag, players, color) "
+                           "VALUES (?, ?, ?, ?, ?)",
+                           (save_id, c.country_id, c.tag, json.dumps(c.players), c.color))
                 db.executemany("INSERT INTO country_metrics VALUES (?, ?, ?, ?)",
                                [(save_id, c.country_id, k, v) for k, v in c.metrics.items()])
             db.execute(

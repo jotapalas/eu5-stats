@@ -37,6 +37,10 @@ class CountryIn(BaseModel):
 
 class CountryPatch(BaseModel):
     player: str | None = Field(default=None, max_length=100, description="Main player; empty/null: from saves")
+    color_light: str | None = Field(default=None, pattern=r"^(#[0-9A-Fa-f]{6})?$",
+                                    description="Chart colour in light mode, #rrggbb; empty/null: game colour")
+    color_dark: str | None = Field(default=None, pattern=r"^(#[0-9A-Fa-f]{6})?$",
+                                   description="Chart colour in dark mode, #rrggbb; empty/null: game colour")
 
 
 # ---------------------------------------------------------------------- metrics
@@ -92,8 +96,10 @@ def add_country(campaign_id: int, body: CountryIn, request: Request) -> dict:
 
 @router.patch("/campaigns/{campaign_id}/countries/{tag}", tags=["countries"])
 def update_country(campaign_id: int, tag: str, body: CountryPatch, request: Request) -> dict:
-    """Set the main player shown for the country in campaign-wide views (sessions keep the saves' names)."""
-    return _store(request).set_country_player(campaign_id, tag.upper(), body.player)
+    """Edit a tracked country: main player shown in campaign-wide views (sessions keep the saves' names)
+    and chart colour overrides per theme. Only the fields sent are changed."""
+    fields = {name: getattr(body, name) for name in body.model_fields_set}
+    return _store(request).update_country(campaign_id, tag.upper(), fields)
 
 
 @router.delete("/campaigns/{campaign_id}/countries/{tag}", status_code=204, tags=["countries"])

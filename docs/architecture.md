@@ -28,7 +28,7 @@ A read-only build reads static JSON files instead (see [Read-only mode](#read-on
 ```
 campaign ─< session ─< save ─< country_snapshot (one per tracked country)
     │                    └─< country_metrics   (save, country_id, metric) -> value
-    └─< campaign_countries  (tracked list: tag as added, country_id, active, main player)
+    └─< campaign_countries  (tracked list: tag as added, country_id, active, main player, colours)
 ```
 
 - A **campaign** is one multiplayer playthrough. A **session** is one evening of play, usually with one
@@ -39,6 +39,9 @@ campaign ─< session ─< save ─< country_snapshot (one per tracked country)
   added with.
 - Each snapshot stores the players controlling the country in that save (empty list = AI). The optional
   `campaign_countries.player` overrides the name shown in campaign-wide views.
+- Each snapshot also stores the country's map colour in that save. Charts use the colour of the latest
+  save (so it follows tag changes, e.g. HOL -> NEL) unless `campaign_countries.color_light` / `color_dark`
+  override it for that theme. `GET /campaigns/{id}` returns them as `colors`.
 
 ### Effective saves
 
@@ -106,8 +109,8 @@ Independence wars are not included.
 | `campaigns` | `id` | unique `name` |
 | `sessions` | `id` | `played_on` (real date), `notes` |
 | `saves` | `id`, unique `(campaign_id, sha256)` | `status`, `error`, `warning`, `game_hours`, `game_date`, playthrough, version |
-| `campaign_countries` | `id`, unique `(campaign_id, country_id)` | `tag` as added, `active`, `player` |
-| `country_snapshots` | `(save_id, country_id)` | tag in that save, `players` JSON |
+| `campaign_countries` | `id`, unique `(campaign_id, country_id)` | `tag` as added, `active`, `player`, `color_light`, `color_dark` |
+| `country_snapshots` | `(save_id, country_id)` | tag in that save, `players` JSON, `color` (`#rrggbb`) |
 | `country_metrics` | `(save_id, country_id, metric)` | `value REAL` |
 
 Deleting a session cascades to its saves and their rows. Upload files no longer referenced by any
@@ -128,8 +131,10 @@ React 18 + Vite + TypeScript, TanStack Query/Table, Recharts, Tailwind. UI text 
 - Campaign-scoped query keys start with `["campaign", id]`. `CampaignLayout` invalidates them when
   `saves_done` changes. While saves are pending, campaign and session queries poll every 2 s.
 - The X axis is the game date as a fractional year (365-day years), with one point per save.
-- Country colours come from 8 fixed categorical hues assigned by sorted tag. Countries 9–16 reuse them
-  with a dashed line, and the rest are grey.
+- Country colours are the game's map colours (latest save), overridable per theme in Settings. Walking
+  countries in sorted tag order, a country whose colour equals or is close to an earlier one (redmean
+  distance < `SIMILAR_DISTANCE`) gets a dashed, then dotted, line. Countries without a game colour yet
+  (saves not reprocessed) fall back to the 8 categorical hues.
 
 ### Read-only public build
 

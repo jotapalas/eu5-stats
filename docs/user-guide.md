@@ -43,8 +43,9 @@ The URL keeps your choice, so you can share the link.
   if the rebels win.
 - **Rank metrics** (score position, great power rank) are drawn upside down on a logarithmic scale, so
   1st place is at the top and the differences among the leaders are visible.
-- Each country keeps the same colour everywhere. There are 8 colours: countries 9–16 reuse them with a
-  dashed line, and the rest are grey.
+- Each country uses its colour from the game (from the latest save, so it changes with the tag) and keeps
+  it everywhere. When two countries have the same or a very similar colour, the second one is drawn with a
+  dashed line. Colours that are hard to see can be changed per light/dark mode in **Ajustes**.
 
 ## Country sheet (Ficha de país)
 

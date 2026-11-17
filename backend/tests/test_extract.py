@@ -7,7 +7,7 @@ from app.eu5.container import open_save
 from app.eu5.parser import index_top_level, parse
 from app.eu5.string_lookup import parse_string_lookup
 from app.eu5.tokens import TokenTable
-from app.stats.extract import _civil_wars, _dependencies, _subjects, extract
+from app.stats.extract import _civil_wars, _color, _dependencies, _subjects, extract
 from app.stats.metrics import METRICS, SERIES_METRICS, VASSAL_METRICS, vassal_metric
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -42,6 +42,15 @@ def test_countries(mp_stats, mp_facts):
     assert {cid: c.players for cid, c in by_id.items()} == mp_facts.played
     assert all(c.tag == mp_facts.tags[cid] for cid, c in by_id.items())
     assert any(c.metrics["locations"] > 0 for c in mp_stats.countries)
+    assert all(re.fullmatch(r"#[0-9a-f]{6}", c.color or "") for c in mp_stats.countries)
+
+
+def test_color_rules():
+    assert _color({"color": {"rgb": [255, 0, 16]}}) == "#ff0010"
+    assert _color({"color": {"rgb": [12.4, 0, 255.0]}}) == "#0c00ff"
+    for bad in (None, {}, {"color": [1, 2, 3]}, {"color": {"hsv": [1, 2, 3]}}, {"color": {"rgb": [1, 2]}},
+                {"color": {"rgb": [1, 2, 300]}}, {"color": {"rgb": [1, "a", 3]}}):
+        assert _color(bad) is None
 
 
 def test_tracked_countries(mp_save_bytes, mp_stats, mp_ref, mp_ai):

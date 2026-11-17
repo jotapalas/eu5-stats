@@ -8,12 +8,14 @@ HOURS_PER_YEAR = 365 * 24
 IDS = {"ENG": 1, "GBR": 1, "FRA": 2, "CAS": 3, "POR": 4}
 
 
-def stats(year: int, countries: dict, guid: str = "guid-1") -> SaveStats:
+def stats(year: int, countries: dict, guid: str = "guid-1", colors: dict | None = None) -> SaveStats:
     """countries: {tag: (players, metrics)}; country ids come from IDS (ENG and GBR are the same country)."""
+    colors = colors or {}
     return SaveStats(
         playthrough_id=guid, playthrough_name="Test", version="1.4.7",
         game_hours=(5000 + year) * HOURS_PER_YEAR, game_date=f"{year}.1.1",
-        countries=[CountryStats(IDS[tag], tag, list(players), dict(m)) for tag, (players, m) in countries.items()],
+        countries=[CountryStats(IDS[tag], tag, list(players), dict(m), colors.get(tag))
+                   for tag, (players, m) in countries.items()],
     )
 
 
@@ -154,6 +156,48 @@ def test_main_player(store):
     assert store.get_campaign(cid)["main_players"] == {}
     with pytest.raises(NotFound):
         store.set_country_player(cid, "XXX", "Ana")
+
+
+def test_country_colors(store):
+    cid = store.create_campaign("C", None)["id"]
+    sid = store.create_session(cid, None, None, None)
+    add(store, sid, "a", stats(1337, {"ENG": (["Ana"], {"gold": 1}), "FRA": (["Bo"], {"gold": 1})},
+                               colors={"ENG": "#aa0000", "FRA": "#0000aa"}))
+    # England becomes Great Britain, with another colour; France has no colour in this save.
+    add(store, sid, "b", stats(1338, {"GBR": (["Ana"], {"gold": 2}), "FRA": (["Bo"], {"gold": 1})},
+                               colors={"GBR": "#cc0000"}))
+    game = {"light": None, "dark": None}
+    assert store.get_campaign(cid)["colors"] == {"GBR": {"game": "#cc0000", **game},
+                                                 "FRA": {"game": "#0000aa", **game}}
+
+    # Overrides per theme; only the fields given change, and a past tag works.
+    c = store.update_country(cid, "ENG", {"color_light": "#00FF00", "player": "Ana"})
+    assert (c["color"], c["color_light"], c["color_dark"], c["player"]) == ("#cc0000", "#00ff00", None, "Ana")
+    store.update_country(cid, "GBR", {"color_dark": "#ffffff"})
+    store.set_country_player(cid, "GBR", None)
+    assert store.get_campaign(cid)["colors"]["GBR"] == {"game": "#cc0000", "light": "#00ff00", "dark": "#ffffff"}
+    assert store.update_country(cid, "GBR", {"color_light": ""})["color_light"] is None
+    with pytest.raises(ValueError):
+        store.update_country(cid, "GBR", {"color_light": "red"})
+    with pytest.raises(ValueError):
+        store.update_country(cid, "GBR", {"added_at": "x"})
+
+
+def test_adds_new_columns_to_old_databases(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.sqlite"
+    with sqlite3.connect(path) as db:
+        db.executescript("""
+            CREATE TABLE campaign_countries (id INTEGER PRIMARY KEY, campaign_id INTEGER NOT NULL, tag TEXT NOT NULL,
+              country_id INTEGER, active INTEGER NOT NULL DEFAULT 1, player TEXT, added_at TEXT NOT NULL);
+            CREATE TABLE country_snapshots (save_id INTEGER NOT NULL, country_id INTEGER NOT NULL, tag TEXT,
+              players TEXT NOT NULL, PRIMARY KEY (save_id, country_id));
+        """)
+    store = Store(path)
+    with store.connect() as db:
+        assert "color" in {r["name"] for r in db.execute("PRAGMA table_info(country_snapshots)")}
+        assert {"color_light", "color_dark"} <= {r["name"] for r in db.execute("PRAGMA table_info(campaign_countries)")}
+    Store(path)  # idempotent
 
 
 def test_duplicates_warning_and_delete(store):

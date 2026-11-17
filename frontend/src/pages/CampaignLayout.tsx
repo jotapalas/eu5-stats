@@ -53,7 +53,7 @@ export function CampaignLayout() {
       campaign,
       id,
       tags,
-      color: colorScale(tags, dark),
+      color: colorScale(tags, dark, campaign.colors),
       players: (tag) => (campaign.main_players[tag] ? [campaign.main_players[tag]] : campaign.latest[tag]?.players ?? []),
     };
   }, [campaign, id, dark]);

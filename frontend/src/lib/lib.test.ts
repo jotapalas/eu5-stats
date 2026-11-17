@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { colorScale, PALETTE_DARK, PALETTE_LIGHT } from "./colors";
+import { colorDistance, colorScale, PALETTE_DARK, PALETTE_LIGHT, SIMILAR_DISTANCE } from "./colors";
 import { hasVassalVariant, parseScope, resolveMetric, scopeQuery } from "./vassals";
 import {
   countryLabel,
@@ -64,21 +64,39 @@ describe("countryLabel", () => {
 });
 
 describe("colorScale", () => {
-  const tags = Array.from({ length: 20 }, (_, i) => `T${String(i).padStart(2, "0")}`);
-  it("assigns the palette in sorted order, solid first", () => {
-    const c = colorScale(tags);
-    expect(c("T00")).toEqual({ color: PALETTE_LIGHT[0], dash: undefined });
-    expect(c("T07")).toEqual({ color: PALETTE_LIGHT[7], dash: undefined });
+  const game = (hex: string, light: string | null = null, dark: string | null = null) => ({ game: hex, light, dark });
+
+  it("uses the game colour, and the override of the current theme", () => {
+    const colors = { HAB: game("#ffffff", "#000000"), FRA: game("#1e3cb4") };
+    expect(colorScale(["HAB", "FRA"], false, colors)("HAB")).toEqual({ color: "#000000", dash: undefined });
+    expect(colorScale(["HAB", "FRA"], true, colors)("HAB")).toEqual({ color: "#ffffff", dash: undefined });
+    expect(colorScale(["HAB", "FRA"], true, colors)("FRA").color).toBe("#1e3cb4");
   });
-  it("reuses hues dashed past eight countries, then grey", () => {
-    const c = colorScale(tags);
-    expect(c("T08").color).toBe(PALETTE_LIGHT[0]);
-    expect(c("T08").dash).toBeDefined();
-    expect(PALETTE_LIGHT).not.toContain(c("T19").color);
+  it("dashes the second of equal or similar colours, in sorted tag order", () => {
+    const colors = { PAP: game("#ffffff"), HAB: game("#f4f4f4"), KOJ: game("#ffffff"), ENG: game("#c8102e") };
+    const c = colorScale(["PAP", "KOJ", "HAB", "ENG"], false, colors);
+    expect(c("HAB").dash).toBeUndefined();
+    expect(c("KOJ").dash).toBeDefined();
+    expect(c("PAP").dash).toBeDefined();
+    expect(c("PAP").dash).not.toBe(c("KOJ").dash);
+    expect(c("ENG").dash).toBeUndefined();
   });
-  it("is stable regardless of input order and uses dark steps in dark mode", () => {
-    expect(colorScale([...tags].reverse())("T03")).toEqual(colorScale(tags)("T03"));
-    expect(colorScale(tags, true)("T00").color).toBe(PALETTE_DARK[0]);
+  it("lets an override remove the clash", () => {
+    const colors = { HAB: game("#ffffff", "#000000"), PAP: game("#ffffff") };
+    expect(colorScale(["HAB", "PAP"], false, colors)("PAP").dash).toBeUndefined();
+    expect(colorScale(["HAB", "PAP"], true, colors)("PAP").dash).toBeDefined();
+  });
+  it("falls back to the palette without a game colour, stable regardless of input order", () => {
+    const tags = ["T00", "T01", "T02"];
+    expect(colorScale(tags)("T00")).toEqual({ color: PALETTE_LIGHT[0], dash: undefined });
+    expect(colorScale(tags, true)("T01").color).toBe(PALETTE_DARK[1]);
+    expect(colorScale([...tags].reverse())("T02")).toEqual(colorScale(tags)("T02"));
+  });
+  it("measures colour distance", () => {
+    expect(colorDistance("#ffffff", "#FFFFFF")).toBe(0);
+    expect(colorDistance("#ffffff", "#f4f4f4")).toBeLessThan(SIMILAR_DISTANCE);
+    expect(colorDistance("#ff0000", "#0000ff")).toBeGreaterThan(SIMILAR_DISTANCE);
+    expect(colorDistance("#ff0000", "red")).toBe(Infinity);
   });
 });
 
