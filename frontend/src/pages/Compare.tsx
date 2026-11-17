@@ -86,11 +86,6 @@ export function Compare() {
             <span className="label">Métrica</span>
             <MetricPicker metrics={allMetrics} value={metric} onChange={(v) => set({ metric: v })} />
           </div>
-          <p className="max-w-md text-xs muted">
-            {isHistory
-              ? "Serie anual que guarda el propio juego: cubre también los años anteriores al primer save subido."
-              : "Un punto por save subido, en su fecha de juego."}
-          </p>
         </div>
         <div>
           <span className="label">Países</span>

@@ -43,6 +43,7 @@ export const METRIC_LABELS: Record<string, string> = {
   war_exhaustion: "Cansancio bélico",
   advances: "Avances investigados",
   institutions: "Instituciones",
+  political_influence: "Influencia política",
   // history metrics
   tax_base: "Base impositiva",
   economical_base: "Base económica",

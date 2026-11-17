@@ -143,6 +143,7 @@ METRICS: list[Metric] = [
     Metric("war_exhaustion", "state", "War exhaustion", _field("currency_data.war_exhaustion")),
     Metric("advances", "state", "Researched advances", _len("researched_advances")),
     Metric("institutions", "state", "Embraced institutions", _len("institutions")),
+    Metric("political_influence", "state", "Political influence", _field("currency_data.political_influence")),
 ]
 
 METRICS_BY_NAME = {m.name: m for m in METRICS}
