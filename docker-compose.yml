@@ -1,11 +1,11 @@
 services:
   api:
     build:
-      context: .
+      context: ./backend
       args:
         DEV: "1"  # include pytest/httpx so `make test` works in this image
     ports:
       - "8000:8000"
     volumes:
-      # Mount the repo so code and saves (*.eu5 in the root) are visible without rebuilding.
-      - .:/app
+      # Mount the backend so code, data/ and saves (*.eu5 in backend/) are visible without rebuilding.
+      - ./backend:/app
