@@ -8,10 +8,9 @@ from pydantic import BaseModel, Field
 
 from .db import Store
 from .ingest import Ingestor
-from .metrics import HISTORY_FIELDS, METRICS, METRICS_BY_NAME
+from .metrics import METRICS, SERIES_METRICS, VASSAL_VARIANTS
 
 router = APIRouter()
-HISTORY_METRICS = sorted(HISTORY_FIELDS.values())
 
 
 def _store(request: Request) -> Store:
@@ -45,7 +44,8 @@ class CountryPatch(BaseModel):
 def list_metrics() -> dict:
     return {
         "metrics": [{"name": m.name, "category": m.category, "description": m.description} for m in METRICS],
-        "history_metrics": HISTORY_METRICS,
+        # base metric -> {"direct" | "all": stored name of country + vassals}; usable in /series
+        "vassal_metrics": VASSAL_VARIANTS,
     }
 
 
@@ -177,18 +177,11 @@ def reprocess_save(save_id: int, request: Request) -> dict:
 def series(
     campaign_id: int,
     request: Request,
-    metric: str = Query(..., description="See /metrics"),
+    metric: str = Query(..., description="See /metrics (`metrics` or a `vassal_metrics` variant)"),
     tag: str | None = Query(None, description="Current or past tag of the country"),
     session: int | None = None,
 ) -> dict:
-    if metric not in METRICS_BY_NAME:
+    if metric not in SERIES_METRICS:
         raise HTTPException(422, f"Unknown metric {metric!r}; see /metrics")
     points = _store(request).series(campaign_id, metric, tag=tag.upper() if tag else None, session_id=session)
     return {"metric": metric, "points": points}
-
-
-@router.get("/campaigns/{campaign_id}/history", tags=["stats"])
-def history(campaign_id: int, request: Request, metric: str = Query(..., description="See /metrics")) -> dict:
-    if metric not in HISTORY_METRICS:
-        raise HTTPException(422, f"Unknown history metric {metric!r}; one of {HISTORY_METRICS}")
-    return {"metric": metric, **_store(request).history(campaign_id, metric)}

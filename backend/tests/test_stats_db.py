@@ -8,13 +8,12 @@ HOURS_PER_YEAR = 365 * 24
 IDS = {"ENG": 1, "GBR": 1, "FRA": 2, "CAS": 3, "POR": 4}
 
 
-def stats(year: int, countries: dict, guid: str = "guid-1", history=()) -> SaveStats:
+def stats(year: int, countries: dict, guid: str = "guid-1") -> SaveStats:
     """countries: {tag: (players, metrics)}; country ids come from IDS (ENG and GBR are the same country)."""
     return SaveStats(
         playthrough_id=guid, playthrough_name="Test", version="1.4.7",
         game_hours=(5000 + year) * HOURS_PER_YEAR, game_date=f"{year}.1.1",
         countries=[CountryStats(IDS[tag], tag, list(players), dict(m)) for tag, (players, m) in countries.items()],
-        history=[(IDS[tag], tag, m, y, v) for tag, m, y, v in history],
     )
 
 
@@ -155,18 +154,6 @@ def test_main_player(store):
     assert store.get_campaign(cid)["main_players"] == {}
     with pytest.raises(NotFound):
         store.set_country_player(cid, "XXX", "Ana")
-
-
-def test_history_latest_save_wins(store):
-    cid = store.create_campaign("C", None)["id"]
-    sid = store.create_session(cid, None, None, None)
-    add(store, sid, "a", stats(1338, {"ENG": (["Ana"], {})},
-                                history=[("ENG", "population", 1337, 1.0), ("ENG", "population", 1338, 2.0)]))
-    add(store, sid, "b", stats(1339, {"GBR": (["Bo"], {})},
-                                history=[("GBR", "population", 1338, 2.5), ("GBR", "population", 1339, 3.0)]))
-    h = store.history(cid, "population")
-    assert h["series"]["GBR"] == [[1337, 1.0], [1338, 2.5], [1339, 3.0]]
-    assert h["players"] == {"GBR": ["Ana", "Bo"]}
 
 
 def test_duplicates_warning_and_delete(store):

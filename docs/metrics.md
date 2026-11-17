@@ -8,6 +8,23 @@ name shown in the web interface. *Lower is better* only changes how changes are 
 
 Values come straight from the save: a field the game does not write (zero, false, empty) is 0.
 
+## Vassals
+
+Metrics marked *Vassal toggle* are also stored as country + vassals, with the suffixes
+`__vassals` (direct) / `__all_vassals` (all): direct vassals only, or vassals of vassals at every level. The
+UI switches between them with the *Incluir vasallos* selector. Subjects come from
+`diplomacy_manager.dependency`: tributaries, Hansa members and secessionists (and their own
+subjects) never count. A secessionist is a rebel province listed under the country that backs it,
+not under the one it rebels against.
+
+## Civil wars
+
+While a country fights a civil war, the land held by the rebel faction still counts as the
+country's in the metrics marked *Includes land held by civil war factions* (provinces split between
+both sides count once). Only if the faction wins does the loss show up. Independence wars are not
+included: a rebelling subject is no longer a subject. Core locations are not affected by a civil
+war (the government keeps its cores on rebel-held land).
+
 ## Economía (`economy`)
 
 | Metric | UI label | Description | Notes |
@@ -25,31 +42,30 @@ Values come straight from the save: a field the game does not write (zero, false
 
 | Metric | UI label | Description | Notes |
 |---|---|---|---|
-| `population` | Población (en miles) | Population last month |  |
-| `locations` | Localizaciones | Owned locations |  |
-| `provinces` | Provincias | Provinces |  |
-| `core_locations` | Localizaciones núcleo | Core locations |  |
+| `population` | Población (en miles) | Population last month | Vassal toggle; Includes land held by civil war factions |
+| `locations` | Localizaciones | Owned locations | Vassal toggle; Includes land held by civil war factions |
+| `provinces` | Provincias | Provinces | Vassal toggle; Includes land held by civil war factions |
+| `core_locations` | Localizaciones núcleo | Core locations | Vassal toggle |
 | `score_place` | Puesto en puntuación | Score position (1 = best) | Rank: 1 = best, reversed log axis |
 | `score_adm` | Puntuación ADM | Administrative score rating |  |
 | `score_dip` | Puntuación DIP | Diplomatic score rating |  |
 | `score_mil` | Puntuación MIL | Military score rating |  |
 | `great_power_rank` | Rango de gran potencia | Great power rank | Rank: 1 = best, reversed log axis |
+| `vassals` | Vasallos directos | Direct vassals (subjects except tributaries, Hansa members, secessionists) |  |
+| `all_vassals` | Vasallos totales | Vassals at every level (vassals of vassals included) |  |
 
 ## Militar (`military`)
 
 | Metric | UI label | Description | Notes |
 |---|---|---|---|
-| `manpower` | Soldadesca (miles) | Manpower |  |
-| `max_manpower` | Sold. máx. (miles) | Maximum manpower |  |
+| `manpower` | Soldadesca (miles) | Manpower | Vassal toggle |
+| `max_manpower` | Sold. máx. (miles) | Maximum manpower | Vassal toggle |
 | `sailors` | Marineros (miles) | Sailors |  |
 | `max_sailors` | Marin. máx. (miles) | Maximum sailors |  |
 | `army_tradition` | Tradición del ejército | Army tradition |  |
 | `navy_tradition` | Tradición naval | Navy tradition |  |
-| `armies` | Ejércitos | Number of armies |  |
-| `navies` | Flotas | Number of fleets |  |
-| `regiments` | Regimientos | Army regiments (subunits of type a_*) |  |
-| `army_strength` | Fuerza del ejército | Sum of regiment strength |  |
-| `ships` | Barcos | Ships (subunits of type n_*) |  |
+| `army_strength` | Fuerza del ejército | Sum of regiment strength | Vassal toggle |
+| `ships` | Barcos | Ships (subunits of type n_*) | Vassal toggle |
 | `expected_army_size` | Tamaño de ejército esperado | Expected army size |  |
 | `active_wars` | Guerras activas | Wars the country is actively fighting |  |
 
@@ -63,14 +79,3 @@ Values come straight from the save: a field the game does not write (zero, false
 | `advances` | Avances investigados | Researched advances |  |
 | `institutions` | Instituciones | Embraced institutions |  |
 | `political_influence` | Influencia política | Political influence |  |
-
-## Yearly history
-
-The game keeps a yearly record of a few values in each country. They are charted from that
-record, which also covers the years before the first uploaded save.
-
-| Metric | UI label | Description | Save field |
-|---|---|---|---|
-| `population` | Población (en miles) | Population, as recorded by the game once a year | `historical_population` |
-| `tax_base` | Base impositiva | Tax base, as recorded by the game once a year | `historical_tax_base` |
-| `economical_base` | Base económica | Economic base, as recorded by the game once a year | `historical_economical_base` |

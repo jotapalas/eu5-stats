@@ -3,12 +3,13 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useDeleteSession, useMetrics, useReprocessSave, useSession, useSessionSummary } from "../api/hooks";
-import { MetricPicker } from "../components/pickers";
+import { MetricPicker, VassalScopePicker } from "../components/pickers";
 import { ErrorBox, PageTitle, Spinner, StatusBadge } from "../components/ui";
 import { Swatch } from "../components/ui-swatch";
-import { metricLabel } from "../i18n";
+import { metricLabel, VASSAL_SCOPE_SUFFIX } from "../i18n";
 import { countryLabel, deltaTone, formatDelta, formatValue, LOWER_IS_BETTER } from "../lib/format";
 import { READONLY } from "../lib/mode";
+import { hasVassalVariant, resolveMetric, useVassalScope } from "../lib/vassals";
 import { useCampaignCtx } from "./CampaignLayout";
 import { UploadForm } from "./Sessions";
 
@@ -42,7 +43,7 @@ export function SessionDetail() {
         {session.name || `Sesión ${session.id}`}
         <span className="ml-2 text-sm font-normal muted">
           {session.played_on && `jugada el ${session.played_on} · `}
-          {session.first_date ? `${session.first_date} → ${session.last_date}` : "sin saves procesados"}
+          {session.first_date ? `${session.first_date} - ${session.last_date}` : "sin saves procesados"}
         </span>
       </PageTitle>
       {session.notes && <p className="text-sm muted">{session.notes}</p>}
@@ -105,13 +106,17 @@ function Summary({ sid }: { sid: number }) {
   const { data, error, isLoading } = useSessionSummary(id, sid);
   const { data: metrics } = useMetrics();
   const [metric, setMetric] = useState("locations");
+  const [scopeParam, setScope] = useVassalScope();
+  const hasVassals = hasVassalVariant(metrics?.vassal_metrics, metric);
+  const scope = hasVassals ? scopeParam : "none";
+  const effective = resolveMetric(metrics?.vassal_metrics, metric, scope);
 
   const rows = useMemo(() => {
     const lower = LOWER_IS_BETTER.has(metric);
     return Object.entries(data?.countries ?? {})
-      .map(([tag, ms]) => ({ tag, ...(ms[metric] ?? { start: null, end: null, delta: null }) }))
+      .map(([tag, ms]) => ({ tag, ...(ms[effective] ?? { start: null, end: null, delta: null }) }))
       .sort((a, b) => ((b.delta ?? -Infinity) - (a.delta ?? -Infinity)) * (lower ? -1 : 1));
-  }, [data, metric]);
+  }, [data, metric, effective]);
 
   if (isLoading || !metrics) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
@@ -123,9 +128,12 @@ function Summary({ sid }: { sid: number }) {
     <div className="card">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-medium">
-          Cambios en la sesión <span className="text-sm font-normal muted">{data.first_date} → {data.last_date}</span>
+          Cambios en la sesión <span className="text-sm font-normal muted">{data.first_date} - {data.last_date}</span>
         </h3>
-        <MetricPicker metrics={metrics.metrics} value={metric} onChange={setMetric} />
+        <div className="flex flex-wrap items-center gap-3">
+          {hasVassals && <VassalScopePicker value={scope} onChange={setScope} />}
+          <MetricPicker metrics={metrics.metrics} value={metric} onChange={setMetric} />
+        </div>
       </div>
       <table className="table-base">
         <thead>
@@ -171,7 +179,7 @@ function Summary({ sid }: { sid: number }) {
           })}
         </tbody>
       </table>
-      <p className="mt-2 text-xs muted">{metricLabel(metric)}: primero frente a último save procesado de la sesión.</p>
+      <p className="mt-2 text-xs muted">{metricLabel(metric)}{VASSAL_SCOPE_SUFFIX[scope]}: primero frente a último save procesado de la sesión.</p>
     </div>
   );
 }

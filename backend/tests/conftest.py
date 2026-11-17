@@ -54,7 +54,6 @@ class RefCountry:
     country_id: int
     players: list[str]
     metrics: dict[str, float]
-    history_years: list[int]  # yearly population history
 
 
 @pytest.fixture(scope="session")
@@ -110,8 +109,7 @@ def mp_played(mp_stats) -> list[RefCountry]:
     out = []
     for c in sorted((c for c in mp_stats.countries if c.players and c.metrics["locations"] > 0),
                     key=lambda c: c.tag or ""):
-        years = sorted(y for cid, _, m, y, _ in mp_stats.history if cid == c.country_id and m == "population")
-        out.append(RefCountry(c.tag, c.country_id, c.players, c.metrics, years))
+        out.append(RefCountry(c.tag, c.country_id, c.players, c.metrics))
     assert len(out) >= 2, "the fixture needs at least 2 human countries with locations"
     return out
 
@@ -131,5 +129,5 @@ def mp_ai(mp_save_bytes, mp_facts) -> RefCountry:
     stats = extract(mp_save_bytes, TokenTable(), [(t, None) for t in candidates])
     for c in sorted(stats.countries, key=lambda c: c.tag or ""):
         if c.country_id not in mp_facts.played and c.metrics["locations"] > 0:
-            return RefCountry(c.tag, c.country_id, [], c.metrics, [])
+            return RefCountry(c.tag, c.country_id, [], c.metrics)
     pytest.skip("no AI country with locations among the first non-played tags")

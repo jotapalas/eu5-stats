@@ -9,7 +9,6 @@ import type {
   Campaign,
   CampaignDetail,
   CountryTimeline,
-  HistoryResponse,
   MetricsResponse,
   SeriesResponse,
   Session,
@@ -26,7 +25,6 @@ export const keys = {
   metrics: ["metrics"] as const,
   campaign: (id: number) => ["campaign", id] as const,
   series: (id: number, metric: string) => ["campaign", id, "series", metric] as const,
-  history: (id: number, metric: string) => ["campaign", id, "history", metric] as const,
   country: (id: number, tag: string) => ["campaign", id, "country", tag] as const,
   countries: (id: number) => ["campaign", id, "countries"] as const,
   sessions: (id: number) => ["campaign", id, "sessions"] as const,
@@ -52,13 +50,6 @@ export const useSeries = (id: number, metric: string, enabled = true) =>
   useQuery({
     queryKey: keys.series(id, metric),
     queryFn: () => get<SeriesResponse>(`/campaigns/${id}/series${query({ metric })}`),
-    enabled: enabled && !!metric,
-  });
-
-export const useHistory = (id: number, metric: string, enabled = true) =>
-  useQuery({
-    queryKey: keys.history(id, metric),
-    queryFn: () => get<HistoryResponse>(`/campaigns/${id}/history${query({ metric })}`),
     enabled: enabled && !!metric,
   });
 

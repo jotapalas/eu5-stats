@@ -12,14 +12,17 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { useMetrics } from "../api/hooks";
 import type { Snapshot } from "../api/types";
+import { VassalScopePicker } from "../components/pickers";
 import { Empty, Segmented, Spinner } from "../components/ui";
 import { Swatch } from "../components/ui-swatch";
 import { categoryLabel, metricLabel } from "../i18n";
 import { formatValue, LOWER_IS_BETTER } from "../lib/format";
 import { READONLY } from "../lib/mode";
+import { resolveMetric, scopeQuery, useVassalScope } from "../lib/vassals";
 import { useCampaignCtx } from "./CampaignLayout";
 
-type Row = Snapshot & { label: string };
+/** `values`: each base metric resolved for the vassal scope. */
+type Row = Snapshot & { label: string; values: Record<string, number | undefined> };
 const col = createColumnHelper<Row>();
 
 export function Overview() {
@@ -28,14 +31,23 @@ export function Overview() {
   const navigate = useNavigate();
   const [category, setCategory] = useState("all");
   const [onlyPlayers, setOnlyPlayers] = useState(false);
+  const [scope, setScope] = useVassalScope();
   const [sorting, setSorting] = useState<SortingState>([{ id: "score_place", desc: false }]);
 
+  // The scope is resolved in the data, not in the accessors: TanStack caches cell values per row and column
+  // id and only rebuilds rows when `data` changes, so a new accessor alone would keep showing stale values.
   const rows = useMemo<Row[]>(
     () =>
       Object.entries(campaign.latest)
-        .map(([label, s]) => ({ ...s, label }))
+        .map(([label, s]) => ({
+          ...s,
+          label,
+          values: Object.fromEntries(
+            (metrics?.metrics ?? []).map((m) => [m.name, s.metrics[resolveMetric(metrics?.vassal_metrics, m.name, scope)]]),
+          ),
+        }))
         .filter((r) => !onlyPlayers || players(r.label).length),
-    [campaign.latest, onlyPlayers, players],
+    [campaign.latest, onlyPlayers, players, metrics, scope],
   );
 
   const columns = useMemo(() => {
@@ -52,7 +64,8 @@ export function Overview() {
         ),
       }),
       ...metrics.metrics.map((m) =>
-        col.accessor((r) => r.metrics[m.name] ?? null, {
+        // Column ids stay the base name so sorting survives scope changes.
+        col.accessor((r) => r.values[m.name] ?? null, {
           id: m.name,
           header: metricLabel(m.name, m.description),
           meta: { description: m.description, category: m.category },
@@ -102,6 +115,7 @@ export function Overview() {
           <input type="checkbox" checked={onlyPlayers} onChange={(e) => setOnlyPlayers(e.target.checked)} />
           Sólo jugadores
         </label>
+        <VassalScopePicker value={scope} onChange={setScope} />
         <span className="text-xs muted">Último dato de cada país · clic en una fila para ver su ficha</span>
       </div>
       <div className="card overflow-x-auto p-0">
@@ -129,7 +143,7 @@ export function Overview() {
           </thead>
           <tbody>
             {table.getRowModel().rows.map((r) => (
-              <tr key={r.id} className="cursor-pointer" onClick={() => navigate(`/c/${id}/country/${r.original.label}`)}>
+              <tr key={r.id} className="cursor-pointer" onClick={() => navigate(`/c/${id}/country/${r.original.label}${scopeQuery(scope, "?")}`)}>
                 {r.getVisibleCells().map((c) => (
                   <td
                     key={c.id}

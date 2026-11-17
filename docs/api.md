@@ -13,7 +13,7 @@ All responses are JSON. Errors use `{"detail": "..."}` with 404 (not found), 409
 |---|---|---|
 | GET | `/health` | Status and number of known native tokens |
 | POST | `/decode` | Decode a save to JSON ([below](#post-decode)) |
-| GET | `/metrics` | Available metrics and history metrics |
+| GET | `/metrics` | Available metrics and their vassal variants (`vassal_metrics`) |
 | POST | `/campaigns` | Create a campaign `{name, description}` |
 | GET | `/campaigns` | List campaigns |
 | GET | `/campaigns/{id}` | Campaign details + latest snapshot per country (`latest`) |
@@ -34,7 +34,6 @@ All responses are JSON. Errors use `{"detail": "..."}` with 404 (not found), 409
 | GET | `/saves/{id}` | Save details and processing status |
 | POST | `/saves/{id}/reprocess` | Re-extract one save → `{queued}` |
 | GET | `/campaigns/{id}/series?metric=&tag=&session=` | Metric over time per country, one point per save |
-| GET | `/campaigns/{id}/history?metric=` | Yearly series kept by the game, per country |
 
 `{tag}` and `tag=` accept the current tag, a past tag or the tag the country was added with,
 case-insensitively. Metric names are listed in [metrics.md](metrics.md).
@@ -89,29 +88,6 @@ has the full TypeScript types.
 
 ```json
 {"metric": "gold", "points": {"ENG": [["1367.1.1", 295.30505]]}}
-```
-
-`GET /campaigns/1/history?metric=population`: `[year, value]` pairs per country (these go back before the
-first save), plus the players seen per country
-
-```json
-{
-  "metric": "population",
-  "series": {"ENG": [[1337, 3015.99041], [1338, 3023.49754], "..."], "...": "..."},
-  "players": {"ENG": ["Miranda"], "...": "..."}
-}
-```
-
-`GET /campaigns/1/countries/ENG`
-
-```json
-{
-  "tag": "ENG", "country_id": 289,
-  "timeline": [
-    {"save_id": 1, "session_id": 1, "date": "1367.1.1", "tag": "ENG", "players": ["Miranda"],
-     "metrics": {"active_wars": 0.0, "advances": 87.0, "...": "..."}}
-  ]
-}
 ```
 
 `GET /sessions/1/summary`

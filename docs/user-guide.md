@@ -37,8 +37,10 @@ Pick a **Métrica** and tick the **Países** to draw. Hovering a country in the 
 The URL keeps your choice, so you can share the link.
 
 - The horizontal axis is the in-game date. With per-save metrics there is one point per uploaded save.
-- **Population, tax base and economic base** use the yearly record the game keeps itself. These lines
-  start before the first uploaded save, often at the campaign start.
+- **Incluir vasallos** (No / Directos / Todos) adds the vassals to population, territory and military
+  metrics. It is also available in the ranking, the country sheet and the session summary.
+- During a **civil war**, the land held by the rebel faction still counts as the country's. It only drops
+  if the rebels win.
 - **Rank metrics** (score position, great power rank) are drawn upside down on a logarithmic scale, so
   1st place is at the top and the differences among the leaders are visible.
 - Each country keeps the same colour everywhere. There are 8 colours: countries 9–16 reuse them with a

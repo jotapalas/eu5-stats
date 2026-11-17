@@ -2,10 +2,22 @@
 import { useRef, useState, type DragEvent } from "react";
 
 import type { MetricDef } from "../api/types";
-import { categoryLabel, metricLabel } from "../i18n";
+import { categoryLabel, metricLabel, VASSAL_SCOPE_LABELS } from "../i18n";
 import type { ColorScale } from "../lib/colors";
 import { formatValue } from "../lib/format";
+import { VASSAL_SCOPES, type VassalScope } from "../lib/vassals";
+import { Segmented } from "./ui";
 import { Swatch } from "./ui-swatch";
+
+/** "Incluir vasallos: No / Directos / Todos". */
+export function VassalScopePicker({ value, onChange }: { value: VassalScope; onChange: (s: VassalScope) => void }) {
+  return (
+    <span className="inline-flex items-center gap-2" title="Suma los vasallos (directos o de todos los niveles) al país">
+      <span className="text-xs muted">Incluir vasallos</span>
+      <Segmented value={value} onChange={onChange} options={VASSAL_SCOPES.map((s) => ({ value: s, label: VASSAL_SCOPE_LABELS[s] }))} />
+    </span>
+  );
+}
 
 export function MetricPicker({ metrics, value, onChange, className = "" }: {
   metrics: MetricDef[];

@@ -1,23 +1,20 @@
 /**
  * One metric over time for the selected countries. State lives in the query string (shareable links).
  *
- * A single metric list: metrics the game keeps as yearly history (/history) use that series, which
- * also covers years before the first uploaded save; every other metric uses one point per save (/series).
+ * One point per save (/series). Metrics with vassal variants show the "Incluir vasallos" selector
+ * (`vassals` param).
  */
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { useHistory, useMetrics, useSeries } from "../api/hooks";
-import type { MetricDef } from "../api/types";
+import { useMetrics, useSeries } from "../api/hooks";
 import { TimeSeriesChart, type ChartSeries } from "../components/TimeSeriesChart";
-import { CountryList, MetricPicker } from "../components/pickers";
+import { CountryList, MetricPicker, VassalScopePicker } from "../components/pickers";
 import { ErrorBox, Spinner } from "../components/ui";
-import { metricLabel } from "../i18n";
+import { metricLabel, VASSAL_SCOPE_SUFFIX } from "../i18n";
 import { countryLabel, gameDateToYear, RANK_METRICS } from "../lib/format";
+import { hasVassalVariant, resolveMetric, useVassalScope } from "../lib/vassals";
 import { useCampaignCtx } from "./CampaignLayout";
-
-/** History-only metrics have no per-save definition; they go in the economy group. */
-const HISTORY_ONLY_CATEGORY = "economy";
 
 export function Compare() {
   const { id, tags, color, players } = useCampaignCtx();
@@ -25,21 +22,15 @@ export function Compare() {
   const [params, setParams] = useSearchParams();
 
   const metric = params.get("metric") || "locations";
-  const isHistory = !!metrics?.history_metrics.includes(metric);
+  const [scopeParam, setScope] = useVassalScope();
+  const hasVassals = hasVassalVariant(metrics?.vassal_metrics, metric);
+  const scope = hasVassals ? scopeParam : "none";
+  const effective = resolveMetric(metrics?.vassal_metrics, metric, scope);
   const tagsParam = params.get("tags");
   const selected = useMemo(
     () => new Set(tagsParam !== null ? tagsParam.split(",").filter(Boolean) : tags.filter((t) => players(t).length)),
     [tagsParam, tags, players],
   );
-
-  const allMetrics = useMemo<MetricDef[]>(() => {
-    if (!metrics) return [];
-    const known = new Set(metrics.metrics.map((m) => m.name));
-    const extra = metrics.history_metrics
-      .filter((m) => !known.has(m))
-      .map((name) => ({ name, category: HISTORY_ONLY_CATEGORY, description: name }));
-    return [...metrics.metrics, ...extra];
-  }, [metrics]);
 
   const set = (patch: Record<string, string>) =>
     setParams((p) => {
@@ -48,28 +39,19 @@ export function Compare() {
       return n;
     }, { replace: true });
 
-  const seriesQ = useSeries(id, metric, !!metrics && !isHistory);
-  const historyQ = useHistory(id, metric, isHistory);
-  const active = isHistory ? historyQ : seriesQ;
+  const active = useSeries(id, effective, !!metrics);
 
   // Every country in the response (the list shows latest values of unselected ones too).
-  const allSeries = useMemo<ChartSeries[]>(() => {
-    if (isHistory) {
-      const hp = historyQ.data?.players ?? {};
-      return Object.entries(historyQ.data?.series ?? {}).map(([tag, pts]) => ({
+  const allSeries = useMemo<ChartSeries[]>(
+    () =>
+      Object.entries(active.data?.points ?? {}).map(([tag, pts]) => ({
         key: tag,
-        name: countryLabel(tag, players(tag).length ? players(tag) : hp[tag]),
+        name: countryLabel(tag, players(tag)),
         style: color(tag),
-        points: pts.map(([year, y]) => ({ x: year, label: String(year), y })),
-      }));
-    }
-    return Object.entries(seriesQ.data?.points ?? {}).map(([tag, pts]) => ({
-      key: tag,
-      name: countryLabel(tag, players(tag)),
-      style: color(tag),
-      points: pts.map(([date, y]) => ({ x: gameDateToYear(date), label: date, y })),
-    }));
-  }, [isHistory, seriesQ.data, historyQ.data, color, players]);
+        points: pts.map(([date, y]) => ({ x: gameDateToYear(date), label: date, y })),
+      })),
+    [active.data, color, players],
+  );
 
   const chartSeries = useMemo(() => allSeries.filter((s) => selected.has(s.key)), [allSeries, selected]);
   const latest = useMemo(
@@ -80,7 +62,7 @@ export function Compare() {
 
   if (!metrics) return <Spinner />;
 
-  const def = allMetrics.find((m) => m.name === metric);
+  const def = metrics.metrics.find((m) => m.name === metric);
   const rank = RANK_METRICS.has(metric);
 
   return (
@@ -88,7 +70,12 @@ export function Compare() {
       <div className="card space-y-3 lg:sticky lg:top-4">
         <div>
           <span className="label">Métrica</span>
-          <MetricPicker metrics={allMetrics} value={metric} onChange={(v) => set({ metric: v })} className="w-full" />
+          <MetricPicker metrics={metrics.metrics} value={metric} onChange={(v) => set({ metric: v })} className="w-full" />
+          {hasVassals && (
+            <div className="mt-2">
+              <VassalScopePicker value={scope} onChange={setScope} />
+            </div>
+          )}
         </div>
         <div>
           <span className="label">Países</span>
@@ -105,7 +92,7 @@ export function Compare() {
         </div>
       </div>
       <div className="card min-w-0">
-        <h3 className="mb-1 font-medium">{metricLabel(metric, def?.description)}</h3>
+        <h3 className="mb-1 font-medium">{metricLabel(metric, def?.description)}{VASSAL_SCOPE_SUFFIX[scope]}</h3>
         <ErrorBox error={active.error} />
         {active.isLoading ? (
           <Spinner />

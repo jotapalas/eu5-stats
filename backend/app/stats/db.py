@@ -77,15 +77,8 @@ CREATE TABLE IF NOT EXISTS country_metrics (
     value      REAL NOT NULL,
     PRIMARY KEY (save_id, country_id, metric)
 );
-CREATE TABLE IF NOT EXISTS country_history (
-    save_id    INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
-    country_id INTEGER NOT NULL,
-    tag        TEXT,
-    metric     TEXT NOT NULL,
-    year       INTEGER NOT NULL,
-    value      REAL NOT NULL,
-    PRIMARY KEY (save_id, country_id, metric, year)
-);
+-- The game's yearly history (historical_*) is no longer stored.
+DROP TABLE IF EXISTS country_history;
 """
 
 # Processed saves that count for campaign-wide series: when several saves share a game
@@ -479,7 +472,6 @@ class Store:
             active = self._update_tracked(db, campaign_id, stats)
             db.execute("DELETE FROM country_snapshots WHERE save_id = ?", (save_id,))
             db.execute("DELETE FROM country_metrics WHERE save_id = ?", (save_id,))
-            db.execute("DELETE FROM country_history WHERE save_id = ?", (save_id,))
             for c in stats.countries:
                 if c.country_id not in active:  # played but removed from the campaign
                     continue
@@ -487,8 +479,6 @@ class Store:
                            (save_id, c.country_id, c.tag, json.dumps(c.players)))
                 db.executemany("INSERT INTO country_metrics VALUES (?, ?, ?, ?)",
                                [(save_id, c.country_id, k, v) for k, v in c.metrics.items()])
-            db.executemany("INSERT INTO country_history VALUES (?, ?, ?, ?, ?, ?)",
-                           [(save_id, cid, tag, m, y, v) for cid, tag, m, y, v in stats.history if cid in active])
             db.execute(
                 """UPDATE saves SET status = 'done', error = NULL, warning = ?, processed_at = ?,
                    playthrough_id = ?, playthrough_name = ?, version = ?,
@@ -616,34 +606,3 @@ class Store:
                 names.extend(p for p in json.loads(r["players"]) if p not in names)
             out["players"] = dict(sorted(out["players"].items()))
             return out
-
-    def history(self, campaign_id: int, metric: str) -> dict:
-        """Yearly series kept by the game (historical_*), per country; the latest save wins per year."""
-        with self.connect() as db:
-            self._campaign(db, campaign_id)
-            rows = db.execute(
-                f"""
-                SELECT h.country_id, h.year, h.value
-                FROM country_history h JOIN ({EFFECTIVE_SAVES}) s ON s.id = h.save_id
-                WHERE h.metric = :metric
-                  AND s.game_hours = (
-                      SELECT MAX(s2.game_hours) FROM country_history h2
-                      JOIN saves s2 ON s2.id = h2.save_id
-                      WHERE s2.campaign_id = :campaign AND s2.status = 'done'
-                        AND h2.country_id = h.country_id AND h2.metric = h.metric AND h2.year = h.year)
-                ORDER BY h.country_id, h.year
-                """,
-                {"campaign": campaign_id, "metric": metric},
-            ).fetchall()
-            label = self._label(db, campaign_id)
-            series: dict[str, list] = {}
-            for r in rows:
-                series.setdefault(label(r["country_id"]), []).append([r["year"], r["value"]])
-            players: dict[str, set] = {}
-            for r in db.execute(
-                """SELECT cs.country_id, cs.players FROM country_snapshots cs
-                   JOIN saves s ON s.id = cs.save_id
-                   WHERE s.campaign_id = ? AND s.status = 'done'""", (campaign_id,)):
-                players.setdefault(label(r["country_id"]), set()).update(json.loads(r["players"]))
-            return {"series": dict(sorted(series.items())),
-                    "players": {t: sorted(p) for t, p in sorted(players.items())}}

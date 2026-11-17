@@ -14,8 +14,8 @@ export const STATIC_BASE = "/data";
 export function staticPath(path: string): string {
   const [route, qs = ""] = path.split("?");
   const metric = new URLSearchParams(qs).get("metric");
-  const m = route.match(/^\/campaigns\/(\d+)\/(series|history)$/);
-  if (m && metric) return `${STATIC_BASE}/campaigns/${m[1]}/${m[2]}/${encodeURIComponent(metric)}.json`;
+  const m = route.match(/^\/campaigns\/(\d+)\/series$/);
+  if (m && metric) return `${STATIC_BASE}/campaigns/${m[1]}/series/${encodeURIComponent(metric)}.json`;
   return `${STATIC_BASE}${route}.json`;
 }
 

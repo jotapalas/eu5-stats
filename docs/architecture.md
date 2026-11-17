@@ -27,8 +27,7 @@ A read-only build reads static JSON files instead (see [Read-only mode](#read-on
 
 ```
 campaign ─< session ─< save ─< country_snapshot (one per tracked country)
-    │                    ├─< country_metrics   (save, country_id, metric) -> value
-    │                    └─< country_history   (save, country_id, metric, year) -> value
+    │                    └─< country_metrics   (save, country_id, metric) -> value
     └─< campaign_countries  (tracked list: tag as added, country_id, active, main player)
 ```
 
@@ -70,8 +69,7 @@ Reprocessing applies the *current* list, so a removed country loses its rows in 
    `pending` save (`processing`).
 3. `extract.extract(bytes, tokens, tracked)` parses the metadata and only the gamestate sections it
    needs (see [save-format.md](save-format.md#partial-parsing)). It returns a `SaveStats`: one
-   `CountryStats(country_id, tag, players, metrics)` per country plus yearly history rows from the
-   game's `historical_*` lists.
+   `CountryStats(country_id, tag, players, metrics)` per country.
 4. `Store.store_stats` replaces all rows for that save (so it is idempotent), sets `done`, and adds a
    `warning` if the save's `playthrough_id` differs from the campaign's other saves. On any exception the
    save is marked `error` with the message.
@@ -82,6 +80,21 @@ truth. `reprocess` re-queues saves and the database can be rebuilt from `data/up
 Metrics are plain functions over the country record (`METRICS` in
 [`metrics.py`](../backend/app/stats/metrics.py)). The `/metrics` endpoint, validation and
 [metrics.md](metrics.md) are all derived from that list.
+
+Vassals: `extract.py` reads the subject tree from `diplomacy_manager.dependency` (overlord → subject with a
+`subject_type`), also parses the subjects' country records and stores, for each metric in
+`VASSAL_METRICS`, two extra rows: `<metric>__vassals` (country + direct vassals) and
+`<metric>__all_vassals` (country + vassals at every level). Tributaries, Hansa members and secessionists are
+ignored with their subtree (a `secessionists` entry links a rebel province to the country backing it, not
+to its victim). These variants are not in `METRICS`: `/metrics` lists
+them under `vassal_metrics` and `/series` accepts them. The UI's *Incluir vasallos* selector (Compare,
+Overview, Country, session summary; `?vassals=direct|all`) picks the variant.
+
+Civil wars: wars in `war_manager` without `end_date` and with `has_civil_war` are fought by a faction
+(`original_attacker`) against its government (`original_attacker_target`). While they last, the
+faction's land counts for the government in `CIVIL_WAR_METRICS` (population, locations, provinces; provinces
+as the union of `province_definition`s). Core locations are unaffected: the government keeps its cores.
+Independence wars are not included.
 
 ## SQLite
 
@@ -96,7 +109,6 @@ Metrics are plain functions over the country record (`METRICS` in
 | `campaign_countries` | `id`, unique `(campaign_id, country_id)` | `tag` as added, `active`, `player` |
 | `country_snapshots` | `(save_id, country_id)` | tag in that save, `players` JSON |
 | `country_metrics` | `(save_id, country_id, metric)` | `value REAL` |
-| `country_history` | `(save_id, country_id, metric, year)` | the latest save wins per year in queries |
 
 Deleting a session cascades to its saves and their rows. Upload files no longer referenced by any
 campaign are deleted.

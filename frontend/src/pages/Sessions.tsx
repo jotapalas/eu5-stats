@@ -43,7 +43,7 @@ export function Sessions() {
                       {s.played_on || `Sesión ${s.id}`}
                     </Link>
                   </td>
-                  <td>{s.first_date ? `${s.first_date} → ${s.last_date}` : "–"}</td>
+                  <td>{s.first_date ? `${s.first_date} - ${s.last_date}` : "–"}</td>
                   <td>
                     <span className="flex gap-1">
                       {Object.entries(s.saves_by_status).map(([st, n]) => (

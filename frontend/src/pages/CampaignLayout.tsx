@@ -70,7 +70,7 @@ export function CampaignLayout() {
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-xl font-semibold">{campaign.name}</h1>
           <span className="text-sm muted">
-            {campaign.first_date ? `${campaign.first_date} → ${campaign.last_date}` : "Sin saves procesados"}
+            {campaign.first_date ? `${campaign.first_date} - ${campaign.last_date}` : "Sin saves procesados"}
           </span>
           <span className="flex gap-1.5">
             <StatusBadge status="done" count={campaign.saves_done} />

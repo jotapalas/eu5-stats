@@ -1,7 +1,7 @@
 """Generate docs/metrics.md from the metric catalogue and the frontend's labels and flags.
 
 Sources:
-  * `METRICS` / `HISTORY_FIELDS` in app/stats/metrics.py (name, category, description)
+  * `METRICS` / `VASSAL_METRICS` / `CIVIL_WAR_METRICS` in app/stats/metrics.py
   * `METRIC_LABELS` / `CATEGORY_LABELS` in frontend/src/i18n.ts (Spanish UI labels)
   * `RANK_METRICS` / `LOWER_IS_BETTER` in frontend/src/lib/format.ts
 
@@ -17,18 +17,12 @@ import re
 import sys
 from pathlib import Path
 
-from app.stats.metrics import HISTORY_FIELDS, METRICS
+from app.stats.metrics import CIVIL_WAR_METRICS, METRICS, VASSAL_METRICS, VASSAL_SCOPES
 
 REPO = Path(__file__).resolve().parents[2]
 DOC = REPO / "docs" / "metrics.md"
 I18N = REPO / "frontend" / "src" / "i18n.ts"
 FORMAT = REPO / "frontend" / "src" / "lib" / "format.ts"
-
-HISTORY_DESCRIPTIONS = {
-    "population": "Population, as recorded by the game once a year",
-    "tax_base": "Tax base, as recorded by the game once a year",
-    "economical_base": "Economic base, as recorded by the game once a year",
-}
 
 
 def ts_record(source: str, name: str) -> dict[str, str]:
@@ -49,9 +43,18 @@ def ts_set(source: str, name: str) -> set[str]:
 
 def render(labels: dict[str, str], categories: dict[str, str], rank: set[str], lower: set[str]) -> str:
     def notes(name: str) -> str:
+        out = []
         if name in rank:
-            return "Rank: 1 = best, reversed log axis"
-        return "Lower is better" if name in lower else ""
+            out.append("Rank: 1 = best, reversed log axis")
+        elif name in lower:
+            out.append("Lower is better")
+        if name in VASSAL_METRICS:
+            out.append("Vassal toggle")
+        if name in CIVIL_WAR_METRICS:
+            out.append("Includes land held by civil war factions")
+        return "; ".join(out)
+
+    suffixes = " / ".join(f"`{s}` ({scope})" for scope, s in VASSAL_SCOPES.items())
 
     out = [
         "# Metrics",
@@ -64,6 +67,23 @@ def render(labels: dict[str, str], categories: dict[str, str], rank: set[str], l
         "",
         "Values come straight from the save: a field the game does not write (zero, false, empty) is 0.",
         "",
+        "## Vassals",
+        "",
+        "Metrics marked *Vassal toggle* are also stored as country + vassals, with the suffixes",
+        f"{suffixes}: direct vassals only, or vassals of vassals at every level. The",
+        "UI switches between them with the *Incluir vasallos* selector. Subjects come from",
+        "`diplomacy_manager.dependency`: tributaries, Hansa members and secessionists (and their own",
+        "subjects) never count. A secessionist is a rebel province listed under the country that backs it,",
+        "not under the one it rebels against.",
+        "",
+        "## Civil wars",
+        "",
+        "While a country fights a civil war, the land held by the rebel faction still counts as the",
+        "country's in the metrics marked *Includes land held by civil war factions* (provinces split between",
+        "both sides count once). Only if the faction wins does the loss show up. Independence wars are not",
+        "included: a rebelling subject is no longer a subject. Core locations are not affected by a civil",
+        "war (the government keeps its cores on rebel-held land).",
+        "",
     ]
     for cat in dict.fromkeys(m.category for m in METRICS):
         out += [f"## {categories.get(cat, cat)} (`{cat}`)", "",
@@ -72,29 +92,15 @@ def render(labels: dict[str, str], categories: dict[str, str], rank: set[str], l
             if m.category == cat:
                 out.append(f"| `{m.name}` | {labels.get(m.name, '')} | {m.description} | {notes(m.name)} |")
         out.append("")
-    out += [
-        "## Yearly history",
-        "",
-        "The game keeps a yearly record of a few values in each country. They are charted from that",
-        "record, which also covers the years before the first uploaded save.",
-        "",
-        "| Metric | UI label | Description | Save field |",
-        "|---|---|---|---|",
-    ]
-    for field, name in HISTORY_FIELDS.items():
-        out.append(f"| `{name}` | {labels.get(name, '')} | {HISTORY_DESCRIPTIONS.get(name, '')} | `{field}` |")
-    return "\n".join(out) + "\n"
+    return "\n".join(out).rstrip("\n") + "\n"
 
 
 def build() -> tuple[str, list[str]]:
     """Return (markdown, problems)."""
     i18n, fmt = I18N.read_text(encoding="utf-8"), FORMAT.read_text(encoding="utf-8")
     labels = ts_record(i18n, "METRIC_LABELS")
-    names = [m.name for m in METRICS] + list(HISTORY_FIELDS.values())
-    problems = [f"metric {n!r} has no Spanish label in METRIC_LABELS" for n in dict.fromkeys(names)
-                if n not in labels]
-    problems += [f"history metric {n!r} has no entry in HISTORY_DESCRIPTIONS"
-                 for n in HISTORY_FIELDS.values() if n not in HISTORY_DESCRIPTIONS]
+    problems = [f"metric {m.name!r} has no Spanish label in METRIC_LABELS" for m in METRICS
+                if m.name not in labels]
     text = render(labels, ts_record(i18n, "CATEGORY_LABELS"), ts_set(fmt, "RANK_METRICS"),
                   ts_set(fmt, "LOWER_IS_BETTER"))
     return text, problems

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { colorScale, PALETTE_DARK, PALETTE_LIGHT } from "./colors";
+import { hasVassalVariant, parseScope, resolveMetric, scopeQuery } from "./vassals";
 import {
   countryLabel,
   deltaTone,
@@ -78,5 +79,31 @@ describe("colorScale", () => {
   it("is stable regardless of input order and uses dark steps in dark mode", () => {
     expect(colorScale([...tags].reverse())("T03")).toEqual(colorScale(tags)("T03"));
     expect(colorScale(tags, true)("T00").color).toBe(PALETTE_DARK[0]);
+  });
+});
+
+describe("vassal scope", () => {
+  const vm = { population: { direct: "population__vassals", all: "population__all_vassals" } };
+  it("parses the URL param", () => {
+    expect(parseScope(null)).toBe("none");
+    expect(parseScope("direct")).toBe("direct");
+    expect(parseScope("all")).toBe("all");
+    expect(parseScope("bogus")).toBe("none");
+  });
+  it("resolves stored metric names", () => {
+    expect(resolveMetric(vm, "population", "none")).toBe("population");
+    expect(resolveMetric(vm, "population", "direct")).toBe("population__vassals");
+    expect(resolveMetric(vm, "population", "all")).toBe("population__all_vassals");
+    expect(resolveMetric(vm, "gold", "all")).toBe("gold");
+    expect(resolveMetric(undefined, "population", "all")).toBe("population");
+  });
+  it("knows which metrics have variants", () => {
+    expect(hasVassalVariant(vm, "population")).toBe(true);
+    expect(hasVassalVariant(vm, "gold")).toBe(false);
+  });
+  it("builds link queries", () => {
+    expect(scopeQuery("none")).toBe("");
+    expect(scopeQuery("all")).toBe("&vassals=all");
+    expect(scopeQuery("direct", "?")).toBe("?vassals=direct");
   });
 });

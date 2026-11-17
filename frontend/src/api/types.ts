@@ -39,22 +39,18 @@ export interface MetricDef {
 
 export interface MetricsResponse {
   metrics: MetricDef[];
-  history_metrics: string[];
+  /** Base metric -> stored name of country + vassals ("direct" or "all" levels); usable in /series. */
+  vassal_metrics: Record<string, Partial<Record<"direct" | "all", string>>>;
 }
 
-/** [game_date, value] per save, or [year, value] for history. */
-export type Point<X = string> = [X, number];
+/** [game_date, value] per save. */
+export type Point = [string, number];
 
 export interface SeriesResponse {
   metric: string;
   points: Record<string, Point[]>;
 }
 
-export interface HistoryResponse {
-  metric: string;
-  series: Record<string, Point<number>[]>;
-  players: Record<string, string[]>;
-}
 
 export interface TimelineEntry {
   save_id: number;

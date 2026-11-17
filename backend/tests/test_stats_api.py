@@ -35,8 +35,11 @@ def test_campaign_endpoints(client):
     assert client.delete(f"/campaigns/{cid}").status_code == 204
 
     m = client.get("/metrics").json()
-    assert {"gold", "population", "regiments", "stability"} <= {x["name"] for x in m["metrics"]}
-    assert m["history_metrics"] == ["economical_base", "population", "tax_base"]
+    names = {x["name"] for x in m["metrics"]}
+    assert {"gold", "population", "vassals", "all_vassals", "stability"} <= names
+    assert not {"armies", "navies", "regiments"} & names
+    assert m["vassal_metrics"]["population"] == {"direct": "population__vassals", "all": "population__all_vassals"}
+    assert set(m["vassal_metrics"]) <= names
 
 
 def test_full_flow(client, app, mp_save_bytes, mp_stats, mp_played, mp_ai):
@@ -84,6 +87,8 @@ def test_full_flow(client, app, mp_save_bytes, mp_stats, mp_played, mp_ai):
     one = client.get(f"/campaigns/{cid}/series", params={"metric": "locations", "tag": tag.lower(), "session": sid})
     assert one.json()["points"] == {tag: [[date, loc]]}
     assert client.get(f"/campaigns/{cid}/series", params={"metric": "nope"}).status_code == 422
+    agg = client.get(f"/campaigns/{cid}/series", params={"metric": "locations__all_vassals", "tag": tag})
+    assert agg.json()["points"] == {tag: [[date, ref.metrics["locations__all_vassals"]]]}
 
     summary = client.get(f"/sessions/{sid}/summary").json()
     assert summary["countries"][tag]["locations"] == {"start": loc, "end": loc, "delta": 0.0}
@@ -92,10 +97,6 @@ def test_full_flow(client, app, mp_save_bytes, mp_stats, mp_played, mp_ai):
     assert (country["tag"], country["country_id"]) == (tag, ref.country_id)
     assert country["timeline"][0]["players"] == ref.players and country["timeline"][0]["metrics"] == ref.metrics
     assert client.get(f"/campaigns/{cid}/countries/XXX").status_code == 404
-
-    hist = client.get(f"/campaigns/{cid}/history", params={"metric": "population"}).json()
-    assert [y for y, _ in hist["series"][tag]] == ref.history_years and hist["players"][tag] == ref.players
-    assert client.get(f"/campaigns/{cid}/history", params={"metric": "gold"}).status_code == 422
 
     # Tracked list: add an AI country and drop a played one; reprocessing applies the current list.
     ai = mp_ai.tag

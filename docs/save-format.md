@@ -127,8 +127,24 @@ changing them.
 The metadata block is a small token stream (date, playthrough id and name, game version, …). It is
 repeated at the start of `gamestate`, so every unresolved token appears an even number of times in a full
 decode (`test_full_decode` relies on this). The stats layer reads only the metadata and these gamestate
-sections: `played_country`, `countries` (`tags` + selected `database` entries), `unit_manager`,
-`subunit_manager`, `war_manager`.
+sections: `played_country`, `countries` (`tags` + selected `database` entries),
+`diplomacy_manager` (only `dependency`), `subunit_manager`, `war_manager` and, when a tracked country
+fights a civil war, `provinces` (only `province_definition`).
+
+`diplomacy_manager.dependency` lists subject relations as `{first: overlord id, second: subject id,
+named_targets: [{flag: subject_type, target: {type: subject_type, object: <type>}}], start_date, seed}`.
+Types seen: `vassal`, `fiefdom`, `dominion`, `appanage`, `tusi`, `taifa`, `maha_samanta`, `tributary`,
+`hanseatic_member`, `secessionists`. Subjects can have subjects of their own (3 levels in a 1367 save).
+A `secessionists` entry is a rebel province (named after it, e.g. `bornu_province`) listed under the
+country that *backs* it, not under the one it rebels against (bornu_province fights KAN but is listed
+under KBO).
+
+Wars (`war_manager.database`) have `original_attacker`, `original_attacker_target`, `original_defenders`,
+`all` (participants), `start_date` and `end_date` once over. Civil wars set `has_civil_war` (name
+`CIVIL_WAR_NAME`; the attacker is a faction country such as `CIVILWAR_FACTION_nobles_estate`, flag
+`<TAG>_REVOLT_<n>`); independence wars by rebel provinces or subjects carry a `revolt` key
+(`INDEPENDENCE_WAR_NAME`). Factions own their land (`owned_locations`) and their own province objects
+(`provinces.database[id].province_definition`); the government keeps its cores on it.
 
 ## Decoding a save by hand
 

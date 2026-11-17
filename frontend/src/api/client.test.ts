@@ -48,7 +48,6 @@ describe("staticPath", () => {
     ["/campaigns", "/data/campaigns.json"],
     ["/campaigns/1", "/data/campaigns/1.json"],
     ["/campaigns/1/series?metric=gold", "/data/campaigns/1/series/gold.json"],
-    ["/campaigns/1/history?metric=tax_base", "/data/campaigns/1/history/tax_base.json"],
     ["/campaigns/1/countries/ENG", "/data/campaigns/1/countries/ENG.json"],
     ["/campaigns/1/sessions", "/data/campaigns/1/sessions.json"],
     ["/sessions/3", "/data/sessions/3.json"],

@@ -25,15 +25,14 @@ export const METRIC_LABELS: Record<string, string> = {
   score_dip: "Puntuación DIP",
   score_mil: "Puntuación MIL",
   great_power_rank: "Rango de gran potencia",
+  vassals: "Vasallos directos",
+  all_vassals: "Vasallos totales",
   manpower: "Soldadesca (miles)",
   max_manpower: "Sold. máx. (miles)",
   sailors: "Marineros (miles)",
   max_sailors: "Marin. máx. (miles)",
   army_tradition: "Tradición del ejército",
   navy_tradition: "Tradición naval",
-  armies: "Ejércitos",
-  navies: "Flotas",
-  regiments: "Regimientos",
   army_strength: "Fuerza del ejército",
   ships: "Barcos",
   expected_army_size: "Tamaño de ejército esperado",
@@ -44,9 +43,6 @@ export const METRIC_LABELS: Record<string, string> = {
   advances: "Avances investigados",
   institutions: "Instituciones",
   political_influence: "Influencia política",
-  // history metrics
-  tax_base: "Base impositiva",
-  economical_base: "Base económica",
 };
 
 export const metricLabel = (name: string, fallback?: string) => METRIC_LABELS[name] ?? fallback ?? name;
@@ -69,3 +65,7 @@ export const STATUS_LABELS_PLURAL: Record<string, string> = {
 };
 
 export const THEME_LABELS = { dark: "Modo oscuro", light: "Modo claro" };
+
+export const VASSAL_SCOPE_LABELS = { none: "No", direct: "Directos", all: "Todos" } as const;
+/** Suffix for chart titles when vassals are included. */
+export const VASSAL_SCOPE_SUFFIX = { none: "", direct: " (+ vasallos directos)", all: " (+ todos los vasallos)" } as const;

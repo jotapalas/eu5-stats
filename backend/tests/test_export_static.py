@@ -3,7 +3,7 @@ import orjson
 
 from app.stats.db import Store
 from app.stats.extract import CountryStats, SaveStats
-from app.stats.metrics import METRICS
+from app.stats.metrics import SERIES_METRICS
 from tools.export_static import export
 
 HOURS_PER_YEAR = 365 * 24
@@ -15,7 +15,6 @@ def stats(year: int, countries: dict) -> SaveStats:
         playthrough_id="g", playthrough_name="T", version="1.4.7",
         game_hours=(5000 + year) * HOURS_PER_YEAR, game_date=f"{year}.1.1",
         countries=[CountryStats(cid, tag, players, m) for tag, (cid, players, m) in countries.items()],
-        history=[(1, "ENG", "population", year, 5.0)],
     )
 
 
@@ -46,8 +45,7 @@ def test_export_mirrors_store(tmp_path):
     assert camp["main_players"] == {"ENG": "Main"} and set(camp["latest"]) == {"ENG", "FRA"}
     assert load(out, f"campaigns/{cid}/series/gold.json") == {
         "metric": "gold", "points": store.series(cid, "gold")}
-    assert len(list((out / "data" / "campaigns" / str(cid) / "series").iterdir())) == len(METRICS)
-    assert load(out, f"campaigns/{cid}/history/population.json")["series"]["ENG"] == [[1337, 5.0], [1338, 5.0]]
+    assert len(list((out / "data" / "campaigns" / str(cid) / "series").iterdir())) == len(SERIES_METRICS)
     assert load(out, f"campaigns/{cid}/countries/ENG.json") == store.country_timeline(cid, "ENG")
     assert [s["id"] for s in load(out, f"campaigns/{cid}/sessions.json")] == [sid]
     assert load(out, f"sessions/{sid}.json")["save_list"][0]["file_name"] == "a.eu5"

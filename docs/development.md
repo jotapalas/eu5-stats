@@ -64,14 +64,11 @@ Full-decode tests take a while (25–40 MB saves).
    narrow as possible and add a field to `Context`.
 3. Add the Spanish label to `METRIC_LABELS` in `frontend/src/i18n.ts`. If lower is better, add it to
    `LOWER_IS_BETTER` in `frontend/src/lib/format.ts` (and to `RANK_METRICS` if it is a rank).
-4. `make docs`, `make test`.
-5. Existing campaigns need `make reprocess CAMPAIGN=<id>`.
-
-### New history metric
-
-Add `historical_<x>` → `<name>` to `HISTORY_FIELDS`, a description in `HISTORY_DESCRIPTIONS`
-(`tools/metrics_doc.py`) and a Spanish label. Then update the exact list asserted in
-`tests/test_stats_api.py::test_campaign_endpoints`.
+4. If it should also be summed over vassals, add it to `VASSAL_METRICS`; the `__vassals` /
+   `__all_vassals` variants and the UI selector follow. If it measures land that a civil war faction can
+   hold, add it to `CIVIL_WAR_METRICS` and handle it in `extract.with_rebels`.
+5. `make docs`, `make test`.
+6. Existing campaigns need `make reprocess CAMPAIGN=<id>`.
 
 ### New value token
 

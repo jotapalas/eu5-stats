@@ -43,9 +43,10 @@ def count(value) -> float:
 class Context:
     """Data from outside the country record that some metrics need."""
     country_id: int
-    units: dict = field(default_factory=dict)  # unit_manager.database
     subunits: dict = field(default_factory=dict)  # subunit_manager.database
     wars: dict = field(default_factory=dict)  # war_manager.database
+    vassals: list[int] = field(default_factory=list)  # direct vassals (see extract._subjects)
+    all_vassals: list[int] = field(default_factory=list)  # vassals at every level
 
 
 @dataclass(frozen=True)
@@ -54,15 +55,6 @@ class Metric:
     category: str
     description: str
     fn: Callable[[dict, Context], float]
-
-
-def _units(country: dict, ctx: Context, army: bool) -> float:
-    n = 0
-    for uid in as_list(country.get("units")):
-        unit = ctx.units.get(str(uid))
-        if isinstance(unit, dict) and bool(unit.get("is_army", False)) == army:
-            n += 1
-    return float(n)
 
 
 def _subunits(country: dict, ctx: Context, prefix: str) -> list[dict]:
@@ -120,6 +112,10 @@ METRICS: list[Metric] = [
     Metric("score_dip", "size", "Diplomatic score rating", _field("score.score_rating.DIP")),
     Metric("score_mil", "size", "Military score rating", _field("score.score_rating.MIL")),
     Metric("great_power_rank", "size", "Great power rank", _field("great_power_rank")),
+    Metric("vassals", "size", "Direct vassals (subjects except tributaries, Hansa members, secessionists)",
+           lambda c, ctx: float(len(ctx.vassals))),
+    Metric("all_vassals", "size", "Vassals at every level (vassals of vassals included)",
+           lambda c, ctx: float(len(ctx.all_vassals))),
     # military
     Metric("manpower", "military", "Manpower", _field("currency_data.manpower")),
     Metric("max_manpower", "military", "Maximum manpower", _field("max_manpower")),
@@ -127,10 +123,6 @@ METRICS: list[Metric] = [
     Metric("max_sailors", "military", "Maximum sailors", _field("max_sailors")),
     Metric("army_tradition", "military", "Army tradition", _field("currency_data.army_tradition")),
     Metric("navy_tradition", "military", "Navy tradition", _field("currency_data.navy_tradition")),
-    Metric("armies", "military", "Number of armies", lambda c, ctx: _units(c, ctx, army=True)),
-    Metric("navies", "military", "Number of fleets", lambda c, ctx: _units(c, ctx, army=False)),
-    Metric("regiments", "military", "Army regiments (subunits of type a_*)",
-           lambda c, ctx: float(len(_subunits(c, ctx, "a_")))),
     Metric("army_strength", "military", "Sum of regiment strength",
            lambda c, ctx: float(sum(num(s.get("strength")) for s in _subunits(c, ctx, "a_")))),
     Metric("ships", "military", "Ships (subunits of type n_*)",
@@ -148,13 +140,35 @@ METRICS: list[Metric] = [
 
 METRICS_BY_NAME = {m.name: m for m in METRICS}
 
-# Yearly series kept by the game itself in each country record: field -> metric name.
-HISTORY_FIELDS = {
-    "historical_population": "population",
-    "historical_tax_base": "tax_base",
-    "historical_economical_base": "economical_base",
+# Subjects (diplomacy_manager.dependency). Excluded types do not add anything (nor does their subtree).
+# A `secessionists` entry links a rebel province to the country *backing* it, not to the one it rebels against,
+# so it is not the overlord's land.
+EXCLUDED_SUBJECTS = frozenset({"tributary", "hanseatic_member", "secessionists"})
+VASSAL_METRICS = ("population", "locations", "provinces", "core_locations",
+                  "manpower", "max_manpower", "army_strength", "ships")
+
+# During an active civil war the rebels' land still counts for the country they fight (see extract.py).
+# core_locations is left alone: the government keeps its cores on rebel-held land, so adding the rebels'
+# cores would count them twice.
+CIVIL_WAR_METRICS = ("population", "locations", "provinces")
+
+# Aggregated variants (country + vassals) are stored as extra metric names; they are not in METRICS so
+# /metrics, the docs and the UI keep listing base metrics only. scope -> suffix.
+VASSAL_SCOPES = {"direct": "__vassals", "all": "__all_vassals"}
+
+
+def vassal_metric(name: str, scope: str) -> str:
+    return name + VASSAL_SCOPES[scope]
+
+
+VASSAL_VARIANTS: dict[str, dict[str, str]] = {
+    name: {scope: vassal_metric(name, scope) for scope in VASSAL_SCOPES} for name in VASSAL_METRICS
 }
+SERIES_METRICS = set(METRICS_BY_NAME) | {v for vs in VASSAL_VARIANTS.values() for v in vs.values()}
 
 
-def compute(country: dict, ctx: Context) -> dict[str, float]:
-    return {m.name: m.fn(country, ctx) for m in METRICS}
+def compute(country: dict, ctx: Context, names=None) -> dict[str, float]:
+    """All metrics, or only `names`."""
+    if names is None:
+        return {m.name: m.fn(country, ctx) for m in METRICS}
+    return {n: METRICS_BY_NAME[n].fn(country, ctx) for n in names}

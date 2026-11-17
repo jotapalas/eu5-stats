@@ -7,6 +7,7 @@ import {
   useCountries,
   useDeleteCampaign,
   useRemoveCountry,
+  useReprocessCampaign,
   useSetCountryPlayer,
   useUpdateCampaign,
 } from "../api/hooks";
@@ -18,8 +19,35 @@ export function Settings() {
   return (
     <div className="space-y-5">
       <TrackedCountries />
+      <Reprocess />
       <EditCampaign />
     </div>
+  );
+}
+
+/** Re-extract every save of the campaign (after changing tracked countries or new metrics). */
+function Reprocess() {
+  const { id, campaign } = useCampaignCtx();
+  const reprocess = useReprocessCampaign(id);
+  const run = () => {
+    if (confirm("¿Reprocesar todos los saves de la campaña? Puede tardar varios minutos.")) reprocess.mutate();
+  };
+  return (
+    <section className="card">
+      <PageTitle>Reprocesar</PageTitle>
+      <p className="mb-3 text-sm muted">
+        Vuelve a extraer las estadísticas de todos los saves ya subidos con la lista de países seguidos y las métricas
+        actuales. Úsalo tras añadir o quitar países o tras actualizar la aplicación. Los saves se procesan de uno en uno
+        en segundo plano.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn btn-primary" onClick={run} disabled={reprocess.isPending || campaign.sessions === 0}>
+          Reprocesar todos los saves
+        </button>
+        {reprocess.data && <span className="text-sm muted">{reprocess.data.queued} saves en cola.</span>}
+      </div>
+      <ErrorBox error={reprocess.error} />
+    </section>
   );
 }
 
@@ -80,7 +108,7 @@ function TrackedCountries() {
                 <tr key={`${c.added_as}-${c.country_id}`} className={c.active ? "" : "opacity-50"}>
                   <td className="font-medium">{c.tag}</td>
                   <td>{c.added_as}</td>
-                  <td>{c.tags.join(" → ") || "–"}</td>
+                  <td>{c.tags.join(" - ") || "–"}</td>
                   <td>
                     <PlayerInput country={c} onSave={(player) => setPlayer.mutate({ tag: c.tag, player })} />
                   </td>

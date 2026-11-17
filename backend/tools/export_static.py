@@ -8,7 +8,6 @@ The files mirror the GET endpoints the frontend reads, with identical content (b
   data/campaigns.json                            /campaigns
   data/campaigns/{id}.json                       /campaigns/{id}
   data/campaigns/{id}/series/{metric}.json       /campaigns/{id}/series?metric=
-  data/campaigns/{id}/history/{metric}.json      /campaigns/{id}/history?metric=
   data/campaigns/{id}/countries/{TAG}.json       /campaigns/{id}/countries/{TAG}
   data/campaigns/{id}/sessions.json              /campaigns/{id}/sessions
   data/sessions/{sid}.json                       /sessions/{sid}
@@ -25,9 +24,9 @@ from pathlib import Path
 
 import orjson
 
-from app.stats.api import HISTORY_METRICS, list_metrics
+from app.stats.api import list_metrics
 from app.stats.db import Store
-from app.stats.metrics import METRICS
+from app.stats.metrics import SERIES_METRICS
 
 
 def export(store: Store, out: Path, campaign_ids: list[int] | None = None) -> dict[str, int]:
@@ -56,11 +55,9 @@ def export(store: Store, out: Path, campaign_ids: list[int] | None = None) -> di
         detail = store.get_campaign(cid)
         detail["latest"] = store.latest_snapshots(cid)
         write(f"campaigns/{cid}.json", detail)
-        for m in METRICS:
-            write(f"campaigns/{cid}/series/{m.name}.json",
-                  {"metric": m.name, "points": store.series(cid, m.name)})
-        for name in HISTORY_METRICS:
-            write(f"campaigns/{cid}/history/{name}.json", {"metric": name, **store.history(cid, name)})
+        for name in sorted(SERIES_METRICS):
+            write(f"campaigns/{cid}/series/{name}.json",
+                  {"metric": name, "points": store.series(cid, name)})
         for tag in sorted(set(detail["latest"]) | set(detail["countries"])):
             try:
                 write(f"campaigns/{cid}/countries/{tag}.json", store.country_timeline(cid, tag))
